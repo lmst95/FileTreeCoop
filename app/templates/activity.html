@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Aktivität · filetree_coop{% endblock %}
+{% block content %}
+<div class="page">
+  <h1>Aktivität</h1>
+  <p class="muted">Was ist passiert, seit du weg warst? Notizen, Todos und
+    Übergaben von Kollegen sowie Scans – über alle Quellen und Freigaben.</p>
+
+  <div id="act-feed" class="results"></div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/activity.js"></script>{% endblock %}

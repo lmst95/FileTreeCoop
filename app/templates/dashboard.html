@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Quellen · filetree_coop{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="row-between">
+    <h1>Meine Quellen</h1>
+    <button id="new-source-btn" class="primary">+ Quelle hinzufügen</button>
+  </div>
+
+  <p id="browser-warn" class="warn" hidden>
+    ℹ️ Nur das <strong>Scannen</strong> braucht Chrome oder Edge (File System
+    Access API). Suchen, Baum, Notizen &amp; Übergaben funktionieren in diesem
+    Browser uneingeschränkt.
+  </p>
+
+  <form id="new-source-form" class="card inline-form" hidden>
+    <label>Bezeichnung<input name="label" placeholder="z. B. Laptop – Projekte" required></label>
+    <label>Art
+      <select name="kind">
+        <option value="local">Lokal</option>
+        <option value="network">Netzlaufwerk</option>
+        <option value="bwsync">bwSync&amp;Share</option>
+        <option value="shared">Geteilter Ordner</option>
+      </select>
+    </label>
+    <label>Ort/Hinweis<input name="host_hint" placeholder="z. B. Laptop Max"></label>
+    <div class="form-actions">
+      <button type="submit" class="primary">Anlegen</button>
+      <button type="button" id="cancel-source" class="link-btn">Abbrechen</button>
+    </div>
+  </form>
+
+  <div id="sources-list" class="sources"></div>
+
+  <div id="scan-status" class="scan-status" hidden></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/scanner.js"></script>
+<script src="/static/js/dashboard.js"></script>
+{% endblock %}

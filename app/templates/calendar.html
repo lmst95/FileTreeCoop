@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Kalender · filetree_coop{% endblock %}
+{% block content %}
+<div class="page">
+  <h1>Kalender</h1>
+  <p class="muted">Alle Todos und Übergaben mit Termin – als Monatskalender oder
+    als Liste der anstehenden Aufgaben nach Datum.</p>
+
+  <div class="filters card">
+    <div class="filter-row" id="cal-views">
+      <button class="chip-btn active" data-view="month">🗓 Monat</button>
+      <button class="chip-btn" data-view="agenda">📋 Anstehend</button>
+    </div>
+    <div class="filter-row wrap">
+      <select id="cal-source"><option value="">alle Quellen</option></select>
+      <button class="chip-btn active" id="cal-open-only" data-flag>☑ nur offene</button>
+      <button class="chip-btn" id="cal-to-me" data-flag>➦ an mich übergeben</button>
+      <span class="row-spacer"></span>
+      <a class="chip-btn" href="/api/export/calendar.ics" download
+         title="Alle offenen Termine als .ics – importierbar in Outlook/Apple/Google Calendar">📆 iCal-Export</a>
+    </div>
+  </div>
+
+  <div id="view-month" class="cal-view">
+    <div class="cal-nav">
+      <button class="chip-btn" id="cal-prev" title="voriger Monat">‹</button>
+      <h2 id="cal-title" class="cal-title"></h2>
+      <button class="chip-btn" id="cal-next" title="nächster Monat">›</button>
+      <span class="row-spacer"></span>
+      <button class="chip-btn" id="cal-today">heute</button>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+    <div id="cal-day-detail"></div>
+  </div>
+
+  <div id="view-agenda" class="cal-view" hidden>
+    <div id="agenda-count" class="muted small"></div>
+    <div id="agenda-list" class="results"></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/calendar.js"></script>{% endblock %}

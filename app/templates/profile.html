@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Profil · filetree_coop{% endblock %}
+{% block content %}
+<div class="page">
+  <h1>Profil</h1>
+  <p class="muted">Deine Kontodaten und Einstellungen.</p>
+
+  <div class="card">
+    <h2>Profildaten</h2>
+    <form id="profile-form" class="tab-panel active">
+      <label>Name<input type="text" name="display_name" value="{{ user.display_name }}" required maxlength="120"></label>
+      <label>Username<input type="text" name="username" value="{{ user.username }}" required pattern="[A-Za-z0-9._\-]{3,30}" title="3–30 Zeichen: Buchstaben, Ziffern, . _ -" autocomplete="username"></label>
+      <label>E-Mail<input type="email" name="email" value="{{ user.email }}" required autocomplete="email"></label>
+      <div class="form-actions">
+        <button type="submit" class="primary">Speichern</button>
+      </div>
+    </form>
+    <p id="profile-error" class="error" hidden></p>
+  </div>
+
+  <div class="card">
+    <h2>Passwort ändern</h2>
+    <form id="password-form" class="tab-panel active">
+      <label>Aktuelles Passwort<input type="password" name="current_password" required autocomplete="current-password"></label>
+      <label>Neues Passwort (min. 6)<input type="password" name="new_password" required minlength="6" autocomplete="new-password"></label>
+      <div class="form-actions">
+        <button type="submit" class="primary">Passwort ändern</button>
+      </div>
+    </form>
+    <p id="password-error" class="error" hidden></p>
+  </div>
+
+  <div class="card">
+    <h2>Geteilte Inhalte</h2>
+    <p class="muted">Alles, was du über all deine Quellen hinweg mit anderen geteilt hast –
+      Berechtigung anpassen oder Freigabe löschen.</p>
+    <div id="my-shares-list"><p class="muted small">Lädt …</p></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/profile.js"></script>{% endblock %}

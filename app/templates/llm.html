@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}KI · filetree_coop{% endblock %}
+{% block content %}
+<div class="page llm-page">
+  <h1>KI-Einstellungen</h1>
+  <p class="muted">Verbindungen zu LLM-Anbietern, auswählbare Settings und wiederverwendbare Prompts – alles nur für dich sichtbar.</p>
+  <p class="privacy-hint">🔒 Hinweis: Beim Ausführen werden die jeweiligen Inhalte (z. B. Notiztexte) an den gewählten Anbieter übertragen. Nutze nur Endpunkte, denen du vertraust.</p>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="connections">Verbindungen</button>
+    <button class="tab" data-tab="settings">LLM-Settings</button>
+    <button class="tab" data-tab="prompts">Prompts</button>
+  </div>
+
+  <!-- Verbindungen -->
+  <section class="tab-panel active" data-panel="connections">
+    <div class="row-between">
+      <h2>Verbindungen</h2>
+      <button class="primary tiny" data-new-connection>+ Neue Verbindung</button>
+    </div>
+    <div id="connections-list"><p class="muted small">Lädt …</p></div>
+  </section>
+
+  <!-- Settings -->
+  <section class="tab-panel" data-panel="settings">
+    <div class="row-between">
+      <h2>LLM-Settings</h2>
+      <div class="llm-header-actions">
+        <button class="tiny" data-web-search-setting>Web-Suche-Setting anlegen</button>
+        <button class="primary tiny" data-new-setting>+ Neues Setting</button>
+      </div>
+    </div>
+    <p class="muted small">Ein Setting bündelt Verbindung + Modell + Parameter und ist das, was in den Feature-Dropdowns (z. B. bei Notizen) erscheint. „Web-Suche-Setting anlegen“ erstellt aus deiner OpenAI-Verbindung ein fertiges Setting mit aktivierter Web-Suche.</p>
+    <div id="settings-list"><p class="muted small">Lädt …</p></div>
+  </section>
+
+  <!-- Prompts -->
+  <section class="tab-panel" data-panel="prompts">
+    <div class="row-between">
+      <h2>Prompts</h2>
+      <div class="llm-header-actions">
+        <button class="tiny" data-default-prompts>Standard-Prompts anlegen</button>
+        <button class="primary tiny" data-new-prompt>+ Neuer Prompt</button>
+      </div>
+    </div>
+    <p class="muted small">Platzhalter <code>{{ '{{input}}' }}</code> markiert die Stelle, an der der jeweilige Text (z. B. die Notiz) eingesetzt wird. „Standard-Prompts anlegen“ legt fehlende Vorlagen (Sprache &amp; Grammatik, Komplexes erklären, Erweitern &amp; beantworten) neu an, ohne bestehende zu überschreiben.</p>
+    <div id="prompts-list"><p class="muted small">Lädt …</p></div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/llm.js"></script>{% endblock %}

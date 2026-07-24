@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Suche · filetree_coop{% endblock %}
+{% block content %}
+<div class="page">
+  <h1>Dateien suchen</h1>
+  <p class="muted">Beschreibe, was du suchst — Name, Pfadteile, deine Notizen oder Labels.</p>
+
+  <form id="search-form" class="search-bar">
+    <input id="search-input" name="q" placeholder="z. B. angebot kunde müller" autofocus>
+    <select id="search-status">
+      <option value="">alle</option>
+      <option value="present">vorhanden</option>
+      <option value="missing">verschwunden</option>
+    </select>
+    <button type="submit" class="primary">Suchen</button>
+  </form>
+
+  <div id="results" class="results"></div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/search.js"></script>{% endblock %}

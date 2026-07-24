@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Baum · filetree_coop{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="row-between">
+    <h1>Dateibaum</h1>
+    <label class="source-picker">Quelle
+      <select id="source-select"></select>
+    </label>
+  </div>
+  <p class="muted">Klick dich durch die Ordner. Notizen, Todos & Labels hängst du
+    direkt an jeden Eintrag – genau wie in der Suche.</p>
+
+  <div id="tree" class="tree"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/scanner.js"></script>
+<script src="/static/js/tree.js"></script>
+{% endblock %}

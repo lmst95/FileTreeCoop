@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Übersicht · filetree_coop{% endblock %}
+{% block content %}
+<div class="page">
+  <h1>Übersicht</h1>
+  <p class="muted">Alle Notizen, Todos, Labels und Übergaben über deine Quellen –
+    filterbar nach Typ, Label, Quelle und mehr.</p>
+
+  <div class="filters card">
+    <div class="filter-row" id="type-chips"></div>
+    <div class="filter-row" id="label-chips"></div>
+    <div class="filter-row wrap">
+      <input id="ov-q" placeholder="Text in Notiz / Label / Dateiname …">
+      <select id="ov-source"><option value="">alle Quellen</option></select>
+      <button class="chip-btn" id="ov-open-todos" data-flag>☑ nur offene Todos</button>
+      <button class="chip-btn" id="ov-to-me" data-flag>➦ an mich übergeben</button>
+      <button class="link-btn" id="ov-reset">zurücksetzen</button>
+      <span class="row-spacer"></span>
+      <a class="chip-btn" href="/api/export/annotations.csv" download
+         title="Alle Annotationen als CSV (Excel-tauglich)">⬇ CSV-Export</a>
+    </div>
+  </div>
+
+  <div id="ov-count" class="muted small"></div>
+  <div id="ov-results" class="results"></div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/overview.js"></script>{% endblock %}

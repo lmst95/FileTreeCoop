@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Datenbank / lokale Daten
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite3
+filetree_coop.db
+data/
+.claude/
+
+# Umgebung / Secrets
+.env
+.env.*
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+.claude/settings.local.json

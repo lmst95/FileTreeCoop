@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    environment:
+      # In Produktion unbedingt überschreiben (Session-Cookies werden damit signiert).
+      FTC_SECRET_KEY: change-me-in-production
+    restart: unless-stopped

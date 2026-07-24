@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Anmelden · filetree_coop{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="card">
+    <h1>Willkommen</h1>
+    <p class="muted">Tracke, wo deine Dateien liegen — und finde sie per Beschreibung.</p>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="login">Anmelden</button>
+      <button class="tab" data-tab="register">Registrieren</button>
+    </div>
+
+    <form id="login-form" class="tab-panel active">
+      <label>E-Mail oder Username<input type="text" name="identifier" required autocomplete="username"></label>
+      <label>Passwort<input type="password" name="password" required autocomplete="current-password"></label>
+      <button type="submit">Anmelden</button>
+    </form>
+
+    <form id="register-form" class="tab-panel">
+      <label>Name<input type="text" name="display_name" required></label>
+      <label>Username<input type="text" name="username" required pattern="[A-Za-z0-9._\-]{3,30}" title="3–30 Zeichen: Buchstaben, Ziffern, . _ -" autocomplete="username"></label>
+      <label>E-Mail<input type="email" name="email" required autocomplete="email"></label>
+      <label>Passwort (min. 6)<input type="password" name="password" required minlength="6" autocomplete="new-password"></label>
+      <button type="submit">Konto erstellen</button>
+    </form>
+
+    <p id="auth-error" class="error" hidden></p>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/auth.js"></script>{% endblock %}

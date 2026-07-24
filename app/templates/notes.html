@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Notizen · filetree_coop{% endblock %}
+{% block content %}
+<div class="page notes-page">
+  <div class="row-between">
+    <h1>Notizen</h1>
+    <button id="new-note-btn" class="primary">+ Neue Notiz</button>
+  </div>
+  <p class="muted">Deine Pinnwand: freie Notizen und alle Notizen an Dateien und Ordnern, auf die du Zugriff hast.</p>
+
+  <div id="notes-filter" class="note-filter"></div>
+
+  <div id="notes-board" class="notes-board"><p class="muted small">Lädt …</p></div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/notes.js"></script>{% endblock %}

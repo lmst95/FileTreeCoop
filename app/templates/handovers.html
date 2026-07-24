@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Übergaben · filetree_coop{% endblock %}
+{% block content %}
+<div class="page">
+  <h1>Übergaben</h1>
+  <p class="muted">Der Staffelstab: Aufgaben, die dir jemand übergeben hat –
+    annehmen, erledigen, zurückmelden.</p>
+
+  <div class="filters card">
+    <div class="filter-row">
+      <button class="chip-btn active" id="ho-tab-me" data-tab="me">➦ An mich</button>
+      <button class="chip-btn" id="ho-tab-mine" data-tab="mine">↗ Von mir</button>
+      <span class="spacer"></span>
+      <button class="chip-btn active" id="ho-open-only" data-flag>nur unerledigte</button>
+    </div>
+  </div>
+
+  <div id="ho-count" class="muted small"></div>
+  <div id="ho-results" class="results"></div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/handovers.js"></script>{% endblock %}
