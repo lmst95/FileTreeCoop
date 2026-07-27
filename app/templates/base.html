@@ -2,7 +2,8 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
   <title>{% block title %}filetree_coop{% endblock %}</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
@@ -10,7 +11,11 @@
   <header class="topbar">
     <a href="/" class="brand">📁 filetree_coop</a>
     {% if user %}
-    <nav>
+    <button id="nav-toggle" class="nav-toggle" type="button"
+            aria-label="Menü öffnen" aria-expanded="false" aria-controls="main-nav">
+      <span class="nav-toggle-bars" aria-hidden="true"></span>
+    </button>
+    <nav id="main-nav">
       <a href="/">Quellen</a>
       <a href="/browse">Baum</a>
       <a href="/search">Suche</a>

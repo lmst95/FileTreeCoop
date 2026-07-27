@@ -76,11 +76,56 @@ async function refreshNavBadges() {
     setNavBadge("nav-handovers", n.handovers_open, "neue Übergaben an dich");
     setNavBadge("nav-activity", n.activity_new, "neue Aktivität");
     setNavBadge("nav-calendar", n.overdue, "überfällige Aufgaben");
+    // Im eingeklappten Mobil-Menü sind die Badges unsichtbar – deshalb bekommt
+    // der Hamburger einen Sammelpunkt, sobald irgendwo etwas anliegt.
+    const toggle = document.getElementById("nav-toggle");
+    if (toggle) {
+      const total = (n.handovers_open || 0) + (n.activity_new || 0) + (n.overdue || 0);
+      toggle.classList.toggle("has-badge", total > 0);
+    }
   } catch (_e) {
     /* Badges sind nice-to-have – Fehler still schlucken */
   }
 }
 window.refreshNavBadges = refreshNavBadges;
+
+// --- Mobil-Navigation (Hamburger) -------------------------------------------
+
+// Auf schmalen Displays passen die neun Nav-Links nicht in eine Zeile; sie
+// klappen deshalb als Panel unter der Topbar auf.
+function setupMobileNav() {
+  const toggle = document.getElementById("nav-toggle");
+  const nav = document.getElementById("main-nav");
+  if (!toggle || !nav) return;
+
+  const setOpen = (open) => {
+    nav.classList.toggle("open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.setAttribute("aria-label", open ? "Menü schließen" : "Menü öffnen");
+  };
+
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setOpen(!nav.classList.contains("open"));
+  });
+  // Tippen daneben, Navigieren oder Esc schließt wieder.
+  document.addEventListener("click", (e) => {
+    if (nav.classList.contains("open") && !nav.contains(e.target)) setOpen(false);
+  });
+  nav.addEventListener("click", (e) => {
+    if (e.target.closest("a, button")) setOpen(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && nav.classList.contains("open")) {
+      setOpen(false);
+      toggle.focus();
+    }
+  });
+  // Beim Wechsel zurück auf Desktop-Breite darf kein „offener“ Zustand kleben.
+  window.addEventListener("resize", () => {
+    if (window.innerWidth > 900 && nav.classList.contains("open")) setOpen(false);
+  });
+}
 
 // Abmelde-Button (in base.html vorhanden, wenn eingeloggt).
 document.addEventListener("DOMContentLoaded", () => {
@@ -91,6 +136,7 @@ document.addEventListener("DOMContentLoaded", () => {
       window.location.href = "/login";
     });
   }
+  setupMobileNav();
   if (document.querySelector(".topbar nav")) refreshNavBadges();
 });
 
