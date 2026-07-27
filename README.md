@@ -3,7 +3,8 @@
 Tracke systematisch, wo Dateien liegen — über den lokale Rechner — und finde
 sie per beschreibendem Suchstring statt exaktem Namen. An jede Datei lassen
 sich Notizen, Todos, Labels und Übergaben an Kollegen hängen. Neuerdings
-lassen sich Notizen frei erstellen und mit KI verfeinern.
+lassen sich Notizen frei erstellen und mit KI verfeinern, der Speicherplatz
+auswerten (inkl. Duplikaten) und Suchanfragen in Alltagssprache stellen.
 
 Der Clou: Der Browser selbst ist der Scanner. Über die File System Access API
 wählst du einen Ordner, JavaScript läuft rekursiv durch den Baum und überträgt
@@ -36,9 +37,17 @@ pytest -q
 3. **Scannen** — „Ordner wählen & scannen“ öffnet den Ordner-Dialog; der Browser
    erfasst alle Dateien/Ordner darunter und schickt sie in Batches an den Server.
    Der Ordner-Handle wird in IndexedDB gemerkt → **„Erneut scannen“** ohne Dialog.
+   Optional danach **🔐 Inhalts-Hashes** (siehe unten).
 4. **Finden** — auf zwei Wegen:
    - **Suche** (`/search`): Freitext über Name, Pfad, Notizen und Labels (SQLite
      FTS5, mit Präfix-Matching, z. B. findet `rech` den Ordner `Rechnungen`).
+     Zwei Auswahlfelder stellen ein, **worin** gesucht wird (überall · nur
+     Dateiname · Name & Pfad · nur Pfad · nur Notizen & Labels) und **was**
+     gefunden werden darf (Dateien & Ordner · nur Dateien · nur Ordner) – so
+     macht ein Ordner „Angebote“ nicht mehr jede Datei darunter zum Treffer.
+     Dazu strukturelle Filter (Endung, Zeitraum, Größe), die auch **ohne**
+     Suchtext funktionieren. Wer mag, lässt sie sich vom **🤖 Suchassistenten**
+     aus einer Frage in Alltagssprache füllen.
    - **Baum** (`/browse`): durch die Ordner klicken; jede Ebene wird bei Bedarf
      nachgeladen. Über 📋 lässt sich der **Pfad kopieren** (siehe unten).
 5. **Annotieren** — an jedem Treffer bzw. Baum-Eintrag Notiz/Todo/Label/Übergabe
@@ -148,15 +157,86 @@ Scans von Kollegen erscheinen zudem im Aktivitäts-Feed.
 | **Geändert** (Größe/Datum) | Metadaten aktualisiert, Änderung protokolliert | bleiben erhalten |
 | **Gelöscht / nicht mehr da** | wird als *verschwunden* markiert (nicht gelöscht) | **bleiben erhalten** |
 | **Wieder aufgetaucht** | Status springt zurück auf *vorhanden* | die alten sind wieder da |
-| **Verschoben/umbenannt** | **Umzug-Erkennung**: stimmen Name, Größe und Änderungsdatum eindeutig überein, wird der Eintrag umgezogen | **wandern mit** zum neuen Pfad |
+| **Verschoben** | **Umzug-Erkennung**: stimmen Name, Größe und Änderungsdatum eindeutig überein, wird der Eintrag umgezogen | **wandern mit** zum neuen Pfad |
+| **Umbenannt** | fällt beim Scan als *verschwunden + neu* an; mit **Inhalts-Hash** wird die Datei im Nachlauf wiedererkannt | **wandern mit**, sobald der Hash da ist |
 
 Kurz: **Notizen/Todos gehen nie durch einen Scan verloren.** Einträge werden
 nie automatisch gelöscht – nur als *verschwunden* markiert (in Suche/Übersicht
 filterbar). Aufgeräumt wird bewusst per Hand: **🧹 Aufräumen** im Dashboard
 entfernt verschwundene Einträge, lässt annotierte aber standardmäßig stehen.
 Grenze der Umzug-Erkennung: Bei **mehrdeutigen** Kandidaten (mehrere identische
-Dateien) wird nichts zugeordnet – dann gilt wie früher *verschwunden* + *neu*
-(präziser würde erst ein Content-Hash, siehe Roadmap).
+Dateien) wird nichts zugeordnet – dann gilt wie früher *verschwunden* + *neu*.
+Wurde eine Datei zusätzlich **umbenannt**, greift stattdessen der Inhalts-Hash.
+
+## Inhalts-Hashes (🔐)
+
+Auf Wunsch berechnet der Browser je Datei einen **SHA-256** über
+`crypto.subtle` – übertragen wird nur der Hex-String, der Inhalt verlässt den
+Rechner nie. Das Hashen läuft bewusst **nicht im Scan mit** (es muss jede Datei
+komplett lesen), sondern als eigener Nachlauf: Der Server nennt die Dateien ohne
+gültigen Hash (`/hash-todo`), der Browser arbeitet sie kleinste zuerst ab und
+liefert die Ergebnisse in Häppchen zurück. Der Lauf ist **jederzeit abbrechbar**
+und macht beim nächsten Mal genau dort weiter.
+
+Ein Hash gilt für genau den Dateistand (Größe + Änderungsdatum), **wie ihn der
+Index kennt** – ändert sich die Datei, merkt das der nächste Scan und die Datei
+landet automatisch wieder in der Arbeitsliste. Bewusst der Index-Stand und nicht
+das, was der Browser beim Lesen gesehen hat: sonst bliebe eine Datei, deren
+Index-Eintrag abweicht (z. B. weil der Scan sie nicht lesen konnte und 0
+eingetragen hat), für immer in der Arbeitsliste und der Nachlauf liefe im Kreis.
+Zu große Dateien (> 256 MB) und nicht lesbare werden vermerkt und nicht endlos
+erneut versucht.
+
+Der Ablauf ist auf wenige Requests ausgelegt: die Arbeitsliste kommt in Blöcken
+zu 5000 Pfaden, Ergebnisse gehen alle 100 Dateien zurück – ein Lauf über 850
+Dateien kostet 2 GET und 9 POST. Taucht eine Datei trotzdem erneut in der
+Arbeitsliste auf, bricht der Lauf mit einer Warnung ab, statt endlos zu kreisen.
+
+Was das bringt:
+
+- **Duplikate finden** — gleiche Inhalte über alle Quellen hinweg, sortiert
+  nach verschwendetem Platz (Speicher-Seite, Abschnitt *Duplikate*).
+- **Umbenennungen erkennen** — der Scan sieht bei einer umbenannten Datei nur
+  „verschwunden + neu“. Kommt der Hash nach, wird die Datei wiedererkannt und
+  die **Notizen wandern mit**. Zugeordnet wird nur bei genau einem eindeutigen
+  Kandidaten auf beiden Seiten – bei mehreren identischen Dateien bleibt es
+  bewusst bei „verschwunden + neu“, statt zu raten.
+- Der Fortschritt steht auf der Quellen-Karte („🔐 1.204/1.320 Dateien gehasht“).
+
+## Speicherplatz (`/storage`)
+
+Beantwortet „wo ist mein Platz hin?“ – allein aus dem Index, ohne die Dateien
+erneut zu lesen:
+
+- **Kennzahlen** — belegt, Dateien, Ordner, verschwunden.
+- **Ordner-Drilldown** — jede Ebene mit **rekursiver** Größe je Unterordner
+  (eine SQL-Query pro Ebene, nicht eine pro Ordner); Klick geht tiefer.
+- **Dateitypen** und **Alter** (nach Änderungsdatum) als Verteilung.
+- **Größte Dateien** und **lange nicht angefasst** (Archiv-Kandidaten,
+  Zeitraum wählbar).
+- **Duplikate** aus den Inhalts-Hashes.
+
+Alles ist scope-genau gefiltert: Wer nur einen Teilbaum freigegeben bekam, sieht
+auch nur dessen Zahlen. Gerechnet wird über *vorhandene* Dateien – Verschwundenes
+belegt nichts mehr und steht nur als Hinweis in den Kennzahlen.
+
+## Suchassistent (🤖)
+
+Auf `/search` öffnet **🤖 Assistent** ein Feld für Fragen in Alltagssprache
+(„große PDFs vom letzten Sommer, die ich seither nicht angefasst habe“). Ein LLM
+übersetzt die Frage in genau die Filter, die die Suche ohnehin kennt –
+Suchwörter, Quelle, Endung, Zeitraum, Größe, Status, Datei/Ordner. Die Antwort
+wird **streng validiert** (unbekannte Felder, fremde Quellen-IDs und kaputte
+Datumsangaben fallen heraus), erst dann läuft die ganz normale Suche.
+
+Das Ergebnis zeigt offen, *wie* die Frage verstanden wurde (Chips mit den
+erkannten Filtern) und übernimmt die Suchwörter ins normale Feld – von dort
+lässt sich ohne Modell weiterverfeinern.
+
+> ⚠️ **Datenschutz:** An den Anbieter gehen nur die Frage, das heutige Datum und
+> die **Bezeichnungen** deiner Quellen – keine Dateilisten, keine Pfade, keine
+> Inhalte. Nutzbar wird der Assistent, sobald auf der KI-Seite ein LLM-Setting
+> dem Feature **„Suche“** zugeordnet ist.
 
 ## Architektur
 
@@ -178,17 +258,21 @@ app/
                      scans, entry_changes, source_visits, invites
   auth.py            Passwort-Hashing, Session, current_user
   access.py          zugängliche Quellen eines Nutzers (geteilt)
-  search.py          FTS5-Query-Builder (Präfix, bm25-Ranking)
+  search.py          FTS5-Query-Builder (Präfix, bm25) + strukturelle Filter
+  search_assist.py   Prompt-Bau und Validierung des Suchassistenten
   serializers.py     Annotationen inkl. Autor- und Empfängername
-  routers/           auth, sources (+ingest/scans/shares/invites/members/seen/missing),
-                     entries, search, annotations, activity (+notifications), export,
+  routers/           auth, sources (+ingest/scans/shares/invites/members/seen/
+                     missing/hashes), entries, search (+assist), annotations,
+                     activity (+notifications), export, storage, llm,
                      backup (Voll-Dump der DB, nur Betreiber)
-  templates/         login, dashboard, browse, search, overview, handovers, calendar, activity
+  templates/         login, dashboard, browse, search, overview, handovers,
+                     calendar, activity, storage, notes, llm, profile
   static/js/         app, entry_ui, palette, auth, scanner, dashboard, tree, search,
-                     overview, handovers, calendar, activity
-migrations/          Alembic (0001 Baseline, 0002 Kooperations-Ausbau)
-tests/               ingest, scans, search, annotations, threads, handover_flow,
-                     activity, invites, cleanup, export, backup, … (pytest + TestClient)
+                     overview, handovers, calendar, activity, storage, notes, llm
+migrations/          Alembic (0001 Baseline … 0008 Inhalts-Hash)
+tests/               ingest, scans, search, search_assist, annotations, threads,
+                     handover_flow, activity, invites, cleanup, export, hashes,
+                     storage, backup, … (pytest + TestClient)
 ```
 
 ## Datenmodell (Kurzform)
@@ -200,7 +284,9 @@ tests/               ingest, scans, search, annotations, threads, handover_flow,
 - **invites** — ausstehende Freigaben an E-Mails ohne Konto; werden bei der
   Registrierung automatisch zu `source_shares`.
 - **entries** — Dateien/Ordner je Quelle; eindeutig per `(source_id, path)`;
-  `status` = present | missing.
+  `status` = present | missing. Optional `content_hash` (SHA-256) mit
+  `hash_state` (ok | skipped | error) und `hash_size`/`hash_mtime` = der
+  Dateistand, für den der Hash gilt.
 - **annotations** — note | todo | label | handover, an `entries` verankert;
   `due_date` (optional) speist den Kalender; `status` (open | accepted | done)
   ist der Übergabe-Workflow; `parent_annotation_id` macht Antworten möglich.
@@ -246,10 +332,16 @@ Unter dem Reiter **KI** verwaltet jeder Nutzer seine eigenen LLM-Bausteine:
   „Standard-Prompts anlegen“ auf der KI-Seite legt fehlende Vorlagen jederzeit
   (idempotent) wieder an.
 
-Settings und Prompts werden pro **Feature** freigegeben. Aktuell konsumiert das
-die **Notiz**-Ansicht: jede Notiz hat die Tabs *Original* und *KI-überarbeitet*,
-in dem sich Prompt + Setting wählen und das Ergebnis übernehmen oder als neue
-Notiz speichern lässt.
+Settings und Prompts werden pro **Feature** freigegeben. Zwei Konsumenten gibt
+es:
+
+- **Notizen** — jede Notiz hat die Tabs *Original* und *KI-überarbeitet*, in dem
+  sich Prompt + Setting wählen und das Ergebnis übernehmen oder als neue Notiz
+  speichern lässt.
+- **Suche** — der [Suchassistent](#suchassistent-) übersetzt eine Frage in
+  Suchfilter. Ein hier zugeordneter Prompt liefert dem Modell *zusätzliche
+  Hinweise*; die eigentliche Anweisung samt Antwortschema baut der Server
+  (`app/search_assist.py`), damit das Ergebnis verlässlich auswertbar bleibt.
 
 Technisch generisch aufgebaut (`app/llm/`): ein Provider-unabhängiger Service
 mit Adaptern je Anbieter und **einem** Endpunkt `POST /api/llm/run`. Ein neues
@@ -275,13 +367,20 @@ registriert und `/api/llm/run` mit passendem `target_kind` aufruft — ohne
 
 ## Bekannte Grenzen / Roadmap
 
-- Nur der **Ordner-Scan** braucht einen Chromium-Browser (Chrome/Edge); alles
-  andere (Suchen, Baum, Annotieren, Übergaben, Kalender) läuft überall.
+- Nur der **Ordner-Scan** und das **Hashen** brauchen einen Chromium-Browser
+  (Chrome/Edge); alles andere (Suchen, Baum, Annotieren, Übergaben, Kalender,
+  Speicher) läuft überall.
 - Termine sind reine **Tagesdaten** (keine Uhrzeiten, keine Wiederholungen);
   Erinnerungen übernimmt der Kalender des Vertrauens via **iCal-Export**.
 - Die Umzug-Erkennung arbeitet mit (Name, Größe, mtime) und lässt mehrdeutige
-  Fälle bewusst unangetastet.
-- **Später:** wiederkehrende Todos, semantische Suche (Embeddings),
-  Umzug-Erkennung per Content-Hash, optionale Inhalts-Indexierung, optionales
-  Python-CLI für headless-Scans, E-Mail-Digest der Aktivität, Umstieg auf
-  Postgres bei größerem Mehrbenutzerbetrieb.
+  Fälle bewusst unangetastet; Umbenennungen fängt der Inhalts-Hash ab.
+- **Hashen** liest jede Datei einmal komplett – auf Netzlaufwerken dauert das
+  entsprechend. Dateien über 256 MB werden übersprungen (`crypto.subtle` kennt
+  kein inkrementelles Hashen).
+- Der **Suchassistent** ist so gut wie das gewählte Modell; er erfindet keine
+  Treffer (die Suche läuft normal), kann eine Frage aber falsch übersetzen –
+  deshalb zeigt er die erkannten Filter immer offen an.
+- **Später:** wiederkehrende Todos, semantische Suche (Embeddings), Duplikate
+  direkt aus der Ansicht bereinigen, optionale Inhalts-Indexierung, optionales
+  Python-CLI für headless-Scans und -Hashes, E-Mail-Digest der Aktivität,
+  Umstieg auf Postgres bei größerem Mehrbenutzerbetrieb.

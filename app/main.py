@@ -24,6 +24,7 @@ from app.routers import (
     llm,
     search,
     sources,
+    storage,
 )
 
 APP_DIR = Path(__file__).resolve().parent
@@ -48,6 +49,7 @@ app.include_router(annotations.router)
 app.include_router(activity.router)
 app.include_router(export.router)
 app.include_router(llm.router)
+app.include_router(storage.router)
 app.include_router(backup.router)
 
 
@@ -132,6 +134,15 @@ def calendar_page(request: Request, user: User | None = Depends(get_optional_use
         return RedirectResponse(url="/login", status_code=302)
     return templates.TemplateResponse(
         "calendar.html", {"request": request, "user": user}
+    )
+
+
+@app.get("/storage", response_class=HTMLResponse)
+def storage_page(request: Request, user: User | None = Depends(get_optional_user)):
+    if user is None:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse(
+        "storage.html", {"request": request, "user": user}
     )
 
 

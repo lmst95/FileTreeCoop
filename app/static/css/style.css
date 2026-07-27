@@ -1326,3 +1326,112 @@ input[type="date"]:hover { background: var(--hover); }
 @media (prefers-color-scheme: dark) and (max-width: 640px) {
   body::before, body::after { opacity: 0.28; }
 }
+
+/* --- Speicherplatz-Ansicht -------------------------------------------------
+   Alle Balken zeigen dieselbe Größe (Bytes) und tragen deshalb genau einen
+   Farbton – die Länge ist die Aussage. Beschriftungen und Werte bleiben in den
+   Text-Tokens, damit die Farbe nichts „bedeutet“, was sie nicht bedeutet. */
+
+.storage-filters {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin: 0.8rem 0 1.2rem;
+}
+.storage-filters label { display: flex; flex-direction: column; gap: 0.25rem; }
+
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 1.4rem;
+}
+.stat-tile {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-md);
+  padding: 0.9rem 1rem;
+  box-shadow: var(--shadow-sm);
+}
+.stat-value { font-size: 1.6rem; font-weight: 650; letter-spacing: -0.02em; }
+.stat-label { color: var(--muted); font-size: 0.85rem; }
+.stat-sub { margin-top: 0.15rem; }
+
+.storage-section { margin-bottom: 1.2rem; }
+.storage-section h2 { font-size: 1.05rem; margin: 0 0 0.2rem; }
+.storage-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.2rem;
+}
+.storage-cols .storage-section { margin-bottom: 0; }
+
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin: 0.4rem 0 0.7rem; }
+.crumb-sep { color: var(--muted); }
+
+/* Eine Balkenzeile: Kopf (Name + Wert), Balken, Zusatzzeile. */
+.bars { display: flex; flex-direction: column; gap: 2px; margin-top: 0.5rem; }
+.bar-row {
+  display: block;
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--r-sm);
+  color: inherit;
+  text-decoration: none;
+}
+a.bar-row:hover, .bar-row[data-open]:hover { background: var(--hover); }
+.bar-row[data-open] { cursor: pointer; }
+.bar-head { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+.bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-value { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bar-track {
+  height: 8px;
+  margin-top: 0.3rem;
+  border-radius: 4px;
+  background: var(--hover);
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  transition: width 0.35s var(--ease);
+}
+.bar-sub { display: flex; justify-content: space-between; gap: 1rem; margin-top: 0.2rem; }
+.bar-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-meta { white-space: nowrap; }
+
+.dup-group {
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--hairline);
+}
+.dup-group:first-child { border-top: none; }
+.dup-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.dup-hash { opacity: 0.7; }
+.dup-files { list-style: none; padding: 0.3rem 0 0; margin: 0; }
+.dup-files li { display: flex; align-items: center; gap: 0.4rem; padding: 0.12rem 0; }
+.dup-files a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.hash-line:empty { display: none; }
+.hash-line { margin-top: 0.2rem; }
+
+@media (max-width: 640px) {
+  .stat-value { font-size: 1.35rem; }
+  .bar-sub { flex-direction: column; gap: 0.1rem; }
+}
+
+/* --- Suchassistent --------------------------------------------------------- */
+
+.assist-box { margin: 0.8rem 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.assist-box input[name="question"] { width: 100%; }
+.assist-controls { display: flex; gap: 0.8rem; align-items: flex-end; flex-wrap: wrap; }
+.assist-controls label { display: flex; flex-direction: column; gap: 0.2rem; }
+.assist-result {
+  margin: 0.6rem 0 1rem;
+  padding: 0.7rem 0.9rem;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: var(--r-sm);
+}
+.assist-explain { margin: 0 0 0.4rem; }
+.assist-filters { display: flex; flex-wrap: wrap; gap: 0.3rem; }

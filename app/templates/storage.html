@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Speicher · filetree_coop{% endblock %}
+{% block content %}
+<div class="page">
+  <h1>Speicherplatz</h1>
+  <p class="muted">
+    Wo liegt das Volumen, was ist alt, was liegt doppelt? Gerechnet wird über den
+    Index – ohne die Dateien erneut zu lesen.
+  </p>
+
+  <div class="storage-filters">
+    <label class="small">Quelle
+      <select id="storage-source"><option value="">alle Quellen</option></select>
+    </label>
+    <label class="small">Nicht geändert seit
+      <select id="storage-age">
+        <option value="365">1 Jahr</option>
+        <option value="730" selected>2 Jahren</option>
+        <option value="1825">5 Jahren</option>
+      </select>
+    </label>
+  </div>
+
+  <div id="storage-tiles" class="stat-tiles"></div>
+
+  <section class="card storage-section">
+    <div class="row-between">
+      <h2>Ordner</h2>
+      <span class="muted small">Klick öffnet den Ordner</span>
+    </div>
+    <nav id="folder-crumbs" class="crumbs small"></nav>
+    <div id="folder-bars" class="bars"><p class="muted small">Lädt …</p></div>
+  </section>
+
+  <div class="storage-cols">
+    <section class="card storage-section">
+      <h2>Dateitypen</h2>
+      <div id="type-bars" class="bars"></div>
+    </section>
+
+    <section class="card storage-section">
+      <h2>Alter</h2>
+      <p class="muted small">nach Änderungsdatum</p>
+      <div id="age-bars" class="bars"></div>
+    </section>
+  </div>
+
+  <section class="card storage-section">
+    <h2>Größte Dateien</h2>
+    <div id="largest-list" class="bars"></div>
+  </section>
+
+  <section class="card storage-section">
+    <h2>Lange nicht angefasst</h2>
+    <p class="muted small">Große Dateien ohne Änderung im gewählten Zeitraum – Archiv-Kandidaten.</p>
+    <div id="oldest-list" class="bars"></div>
+  </section>
+
+  <section class="card storage-section" id="duplicates">
+    <div class="row-between">
+      <h2>Duplikate</h2>
+      <span id="dup-total" class="muted small"></span>
+    </div>
+    <p class="muted small">
+      Dateien mit identischem Inhalt (SHA-256). Setzt voraus, dass die Quelle
+      <strong>Inhalts-Hashes</strong> berechnet hat – auf der Seite
+      <a href="/">Quellen</a> per 🔐.
+    </p>
+    <div id="dup-list"></div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/storage.js"></script>{% endblock %}

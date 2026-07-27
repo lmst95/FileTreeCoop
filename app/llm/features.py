@@ -9,6 +9,7 @@ from __future__ import annotations
 
 FEATURES: dict[str, str] = {
     "notes": "Notizen",
+    "search": "Suche",
 }
 
 

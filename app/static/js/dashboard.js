@@ -21,6 +21,25 @@ function setStatus(msg, kind = "info") {
   statusEl.textContent = msg;
 }
 
+// Wie setStatus, aber mit einem Abbrechen-Knopf daneben (langer Hash-Lauf).
+// Bei Fortschrittsmeldungen wird nur der Text getauscht – würde hier jedes Mal
+// neu gerendert, verlöre der Knopf bei jedem Tick den Fokus.
+function setStatusCancellable(msg, onCancel) {
+  statusEl.hidden = false;
+  statusEl.className = "scan-status info";
+  let label = statusEl.querySelector(".run-label");
+  if (!label) {
+    statusEl.innerHTML = `<span class="run-label"></span> <button class="link-btn" type="button">abbrechen</button>`;
+    label = statusEl.querySelector(".run-label");
+  }
+  label.textContent = msg;
+  statusEl.querySelector("button").onclick = onCancel;
+}
+
+function formatCount(n) {
+  return Number(n).toLocaleString("de-DE");
+}
+
 // Kompakte Diff-Zeile eines Scans („+3 neu · 2 geändert · 1 verschwunden“).
 function scanDiffText(sc) {
   if (!sc) return "";
@@ -72,14 +91,87 @@ async function loadSources() {
         ${s.last_scan ? `<button data-scans="${s.id}">Scan-Historie</button>` : ""}
         ${s.last_scan && s.last_scan.skipped ? `<button class="btn-warn" data-skips="${s.last_scan.id}" data-src="${s.id}">⚠ ${s.last_scan.skipped} übersprungen</button>` : ""}
         ${isOwner && s.last_scan && s.last_scan.missing ? `<button data-cleanup="${s.id}">🧹 Aufräumen</button>` : ""}
+        ${hasHandle ? `<button data-hash="${s.id}" title="SHA-256 je Datei im Browser berechnen – erkennt Duplikate und Umbenennungen">🔐 Inhalts-Hashes</button>` : ""}
         <a class="btn-link" href="/browse?source=${s.id}">im Baum öffnen →</a>
+        <a class="btn-link" href="/storage?source=${s.id}">Speicher →</a>
         <a class="btn-link" href="/api/sources/${s.id}/export.json" download
            title="Quelle samt Annotationen als JSON sichern">⬇ Export</a>
       </div>
+      <div class="muted small hash-line" data-hash-line="${s.id}"></div>
       ${rootPathFormHtml(s.id)}
       <div class="scans-panel" data-scans-panel="${s.id}" hidden></div>
       ${isOwner ? `<div class="share-panel" data-share-panel="${s.id}" hidden></div>` : ""}`;
     listEl.appendChild(card);
+  }
+  refreshHashLines();
+}
+
+// --- Inhalts-Hashes ---------------------------------------------------------
+
+// Stand je Quelle nachladen („1.204 von 1.320 Dateien gehasht“). Nice-to-have:
+// Fehler bleiben still, die Karte steht auch ohne diese Zeile.
+async function refreshHashLine(sourceId) {
+  const el = listEl.querySelector(`[data-hash-line="${sourceId}"]`);
+  if (!el) return;
+  try {
+    const h = await api(`/api/sources/${sourceId}/hash-summary`);
+    if (!h.files || (!h.hashed && !h.skipped && !h.errors)) {
+      el.textContent = "";
+      return;
+    }
+    const parts = [`🔐 ${formatCount(h.hashed)}/${formatCount(h.files)} Dateien gehasht`];
+    if (h.pending) parts.push(`${formatCount(h.pending)} offen`);
+    if (h.skipped) parts.push(`${formatCount(h.skipped)} zu groß`);
+    if (h.errors) parts.push(`${formatCount(h.errors)} nicht lesbar`);
+    el.innerHTML = escapeHtml(parts.join(" · "));
+    if (h.duplicate_groups) {
+      el.innerHTML += ` · <a href="/storage?source=${sourceId}#duplicates">${formatCount(
+        h.duplicate_groups
+      )} Duplikat-Gruppen</a>`;
+    }
+  } catch (_e) {
+    el.textContent = "";
+  }
+}
+
+function refreshHashLines() {
+  for (const el of listEl.querySelectorAll("[data-hash-line]")) {
+    refreshHashLine(Number(el.dataset.hashLine));
+  }
+}
+
+async function runHashing(sourceId) {
+  try {
+    setStatusCancellable("Inhalts-Hashes werden berechnet …", () => {
+      Scanner.cancelHashing();
+      setStatus("Wird abgebrochen …", "info");
+    });
+    const stats = await Scanner.hashPending(sourceId, (s) => {
+      const extra = [];
+      if (s.skipped) extra.push(`${s.skipped} zu groß`);
+      if (s.errors) extra.push(`${s.errors} nicht lesbar`);
+      setStatusCancellable(
+        `Hashe … ${formatCount(s.hashed)} Dateien${extra.length ? ` (${extra.join(", ")})` : ""}`,
+        () => {
+          Scanner.cancelHashing();
+          setStatus("Wird abgebrochen …", "info");
+        }
+      );
+    });
+    const parts = [`${formatCount(stats.hashed)} Dateien gehasht`];
+    if (stats.skipped) parts.push(`${stats.skipped} zu groß übersprungen`);
+    if (stats.errors) parts.push(`${stats.errors} nicht lesbar`);
+    if (stats.reconciled) {
+      parts.push(`${stats.reconciled} umbenannte Datei(en) wiedererkannt – Notizen mitgenommen`);
+    }
+    let msg = (stats.cancelled ? "Abgebrochen: " : "Fertig: ") + parts.join(" · ") + ".";
+    if (stats.stuck) {
+      msg += ` ⚠ ${formatCount(stats.stuck)} Einträge blieben offen – Details in der Browser-Konsole.`;
+    }
+    setStatus(msg, stats.stuck ? "warn" : stats.cancelled ? "info" : "success");
+    await refreshHashLine(sourceId);
+  } catch (err) {
+    setStatus("Fehler beim Hashen: " + err.message, "error");
   }
 }
 
@@ -335,9 +427,10 @@ listEl.addEventListener("click", async (e) => {
     await showSkipLog(Number(skipsBtn.dataset.src), Number(skipsBtn.dataset.skips));
     return;
   }
-  const { scan, rescan, del, share, scans, cleanup } = e.target.dataset;
+  const { scan, rescan, del, share, scans, cleanup, hash } = e.target.dataset;
   if (scan) await runScan(Scanner.pickAndScan.bind(Scanner), Number(scan));
   else if (rescan) await runScan(Scanner.rescan.bind(Scanner), Number(rescan));
+  else if (hash) await runHashing(Number(hash));
   else if (scans) await openScansPanel(Number(scans));
   else if (share) await openSharePanel(Number(share));
   else if (cleanup) await cleanupMissing(Number(cleanup));

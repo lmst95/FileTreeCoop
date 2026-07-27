@@ -185,6 +185,40 @@ class IngestResult(BaseModel):
     missing_check_skipped: bool = False
 
 
+# --- Inhalts-Hash -----------------------------------------------------------
+
+class HashTodoOut(BaseModel):
+    """Eine Datei, für die (noch) kein gültiger Hash vorliegt."""
+    entry_id: int
+    path: str
+    size: int
+    mtime: float
+
+
+class HashItemIn(BaseModel):
+    path: str
+    # SHA-256 als Hex-String (64 Zeichen); leer bei state != "ok".
+    sha256: str = ""
+    state: str = "ok"  # ok | skipped | error
+    # Stand der Datei, für den der Hash gilt (erkennt spätere Änderungen).
+    size: int = 0
+    mtime: float = 0.0
+
+
+class HashBatchIn(BaseModel):
+    items: list[HashItemIn]
+
+
+class HashSummaryOut(BaseModel):
+    """Fortschritt des Hashens je Quelle (Basis für die Dashboard-Anzeige)."""
+    files: int = 0  # vorhandene Dateien (ohne Ordner)
+    hashed: int = 0  # gültiger Hash zum aktuellen Dateistand
+    pending: int = 0  # kein oder veralteter Hash
+    skipped: int = 0  # bewusst übersprungen (zu groß)
+    errors: int = 0  # nicht lesbar
+    duplicate_groups: int = 0  # Gruppen gleicher Inhalte in dieser Quelle
+
+
 # --- Annotations ------------------------------------------------------------
 
 class AnnotationIn(BaseModel):
@@ -414,6 +448,82 @@ class LLMFeatureOptionOut(BaseModel):
     prompts: list[LLMPromptOut] = []
 
 
+# --- Speicherplatz ----------------------------------------------------------
+
+class StorageSourceOut(BaseModel):
+    source_id: int
+    label: str
+    size: int
+    files: int
+
+
+class StorageSummaryOut(BaseModel):
+    """Kennzahlen über alle zugänglichen (oder eine) Quelle(n)."""
+    total_size: int = 0
+    files: int = 0
+    dirs: int = 0
+    # Verschwundene Dateien belegen nichts mehr – nur zur Einordnung.
+    missing: int = 0
+    missing_size: int = 0
+    sources: list[StorageSourceOut] = []
+
+
+class FolderChildOut(BaseModel):
+    name: str
+    path: str
+    is_dir: bool
+    # Bei Ordnern die rekursive Summe, bei Dateien ihre eigene Größe.
+    size: int
+    files: int
+
+
+class FolderLevelOut(BaseModel):
+    parent: str = ""
+    total_size: int = 0
+    children: list[FolderChildOut] = []
+
+
+class StorageEntryOut(BaseModel):
+    entry_id: int
+    source_id: int
+    source_label: str
+    path: str
+    name: str
+    ext: str = ""
+    size: int
+    mtime: float = 0.0
+
+
+class TypeStatOut(BaseModel):
+    ext: str
+    size: int
+    files: int
+
+
+class AgeBucketOut(BaseModel):
+    label: str
+    days: int | None = None
+    size: int
+    files: int
+
+
+class DuplicateMemberOut(BaseModel):
+    entry_id: int
+    source_id: int
+    source_label: str
+    path: str
+    name: str
+
+
+class DuplicateGroupOut(BaseModel):
+    content_hash: str
+    size: int
+    count: int
+    # Größe × (Kopien − 1) = so viel gäbe eine Bereinigung frei.
+    wasted: int
+    entries: list[DuplicateMemberOut] = []
+
+
 # --- Search -----------------------------------------------------------------
 
 class SearchHit(BaseModel):
@@ -428,3 +538,32 @@ class SearchHit(BaseModel):
     annotations: list[AnnotationOut] = []
     # Fremde Annotationen, die neuer sind als mein letzter Besuch der Quelle.
     has_new: bool = False
+
+
+class SearchAssistIn(BaseModel):
+    """Frage in Alltagssprache + das LLM-Setting, das sie übersetzen soll."""
+    question: str = Field(min_length=1, max_length=1000)
+    setting_id: int
+    # Optionale eigene Vorlage mit zusätzlichen Hinweisen ans Modell.
+    prompt_id: int | None = None
+    limit: int = Field(default=50, le=200)
+
+
+class SearchFiltersOut(BaseModel):
+    """Wie der Assistent die Frage verstanden hat – im UI nachvollziehbar."""
+    query: str = ""
+    source_id: int | None = None
+    source_label: str | None = None
+    status: str | None = None
+    ext: list[str] = []
+    modified_after: date | None = None
+    modified_before: date | None = None
+    min_size: int | None = None
+    max_size: int | None = None
+    is_dir: bool | None = None
+
+
+class SearchAssistOut(BaseModel):
+    filters: SearchFiltersOut
+    explanation: str = ""
+    hits: list[SearchHit] = []

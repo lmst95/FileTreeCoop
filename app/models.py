@@ -9,6 +9,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -103,6 +104,8 @@ class Entry(Base):
     __tablename__ = "entries"
     __table_args__ = (
         UniqueConstraint("source_id", "path", name="uq_entry_path"),
+        # Trägt die Duplikat-Suche (gleicher Inhalt innerhalb/über Quellen).
+        Index("ix_entries_source_content_hash", "source_id", "content_hash"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -124,6 +127,16 @@ class Entry(Base):
     last_scan_id: Mapped[int | None] = mapped_column(
         ForeignKey("scans.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # --- Inhalts-Hash (optional, im Browser berechnet) ----------------------
+    # SHA-256 als Hex; "" = keiner. Der Hash entsteht NICHT beim Scan, sondern
+    # in einem eigenen Nachlauf (siehe /hash-todo), weil er die Dateien lesen
+    # muss. ``hash_size``/``hash_mtime`` halten fest, für welchen Stand der Hash
+    # gilt – weicht die Datei davon ab, ist er veraltet und wird neu berechnet.
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
+    # "" = noch nie versucht | ok | skipped (zu groß) | error (nicht lesbar)
+    hash_state: Mapped[str] = mapped_column(String(20), default="")
+    hash_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    hash_mtime: Mapped[float | None] = mapped_column(nullable=True)
 
     source: Mapped["Source"] = relationship(back_populates="entries")
     annotations: Mapped[list["Annotation"]] = relationship(

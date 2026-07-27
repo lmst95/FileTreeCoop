@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import Session
@@ -24,6 +26,9 @@ from app.models import (
 )
 from app.schemas import (
     EntryChangeOut,
+    HashBatchIn,
+    HashSummaryOut,
+    HashTodoOut,
     IngestBatchIn,
     IngestResult,
     MemberOut,
@@ -148,13 +153,63 @@ def _get_or_create_scan(db: Session, source: Source, user: User, scan_uuid: str)
     return scan
 
 
+def _unique_by_key(entries: list[Entry], key) -> dict[tuple, Entry]:
+    """Ordnet Einträge ihrem Schlüssel zu – mehrdeutige fallen heraus.
+
+    Doppelte Schlüssel (z. B. zwei inhaltsgleiche Dateien) bleiben bewusst
+    unzugeordnet: lieber „verschwunden + neu“ als eine falsche Zuordnung.
+    ``key`` darf None liefern, wenn ein Eintrag nicht in Frage kommt.
+    """
+    seen: dict[tuple, Entry | None] = {}
+    for e in entries:
+        k = key(e)
+        if k is None:
+            continue
+        seen[k] = None if k in seen else e  # None = mehrdeutig
+    return {k: v for k, v in seen.items() if v is not None}
+
+
+def _apply_move(db: Session, scan: Scan, old: Entry, new: Entry) -> None:
+    """Zieht Annotationen zum neuen Eintrag um und macht aus „neu“ ein „verschoben“."""
+    # Annotationen mitnehmen (Core-Update, damit der ORM-Cascade des alten
+    # Eintrags sie nicht mitlöscht).
+    db.execute(
+        update(Annotation).where(Annotation.entry_id == old.id).values(entry_id=new.id)
+    )
+    # Ein bereits berechneter Hash gilt weiter – er hängt am Inhalt, nicht am
+    # Pfad. Nur übernehmen, wenn er zum Stand der neuen Datei passt; sonst
+    # holt ihn der nächste Hash-Nachlauf ohnehin neu.
+    if old.hash_state and old.hash_size == new.size and old.hash_mtime == new.mtime:
+        new.content_hash = old.content_hash
+        new.hash_state = old.hash_state
+        new.hash_size = old.hash_size
+        new.hash_mtime = old.hash_mtime
+    db.execute(
+        delete(EntryChange).where(
+            EntryChange.scan_id == scan.id,
+            EntryChange.entry_id == new.id,
+            EntryChange.change == "added",
+        )
+    )
+    db.add(
+        EntryChange(scan_id=scan.id, entry_id=new.id, change="moved", old_path=old.path)
+    )
+    db.execute(delete(Entry).where(Entry.id == old.id))
+    scan.added -= 1
+    scan.moved += 1
+
+
 def _detect_moves(db: Session, scan: Scan, candidates: list[Entry]) -> tuple[int, set[int]]:
-    """Umzug-Erkennung beim Finalize.
+    """Umzug-Erkennung beim Finalize über (Name, Größe, mtime).
 
     Eine Datei, die verschwinden würde, und eine in diesem Scan neu
-    aufgetauchte gelten als dieselbe, wenn (Name, Größe, mtime) auf beiden
-    Seiten eindeutig übereinstimmt. Dann wandern die Annotationen zum neuen
-    Eintrag und der alte wird entfernt (statt als „verschwunden“ zu bleiben).
+    aufgetauchte gelten als dieselbe, wenn der Schlüssel auf beiden Seiten
+    eindeutig übereinstimmt. Dann wandern die Annotationen zum neuen Eintrag und
+    der alte wird entfernt (statt als „verschwunden“ zu bleiben).
+
+    Der **Inhalts-Hash** hilft hier bewusst nicht: neu angelegte Einträge haben
+    noch keinen. Umbenannte Dateien (Name ändert sich, Inhalt nicht) fängt
+    stattdessen ``reconcile_by_hash`` im Hash-Nachlauf ab.
     """
     added_entries = db.scalars(
         select(Entry)
@@ -168,18 +223,11 @@ def _detect_moves(db: Session, scan: Scan, candidates: list[Entry]) -> tuple[int
     if not added_entries:
         return 0, set()
 
-    def key(e: Entry) -> tuple[str, int, int]:
+    def meta_key(e: Entry) -> tuple:
         return (e.name, e.size, round(e.mtime))
 
-    def unique_by_key(entries: list[Entry]) -> dict[tuple, Entry]:
-        seen: dict[tuple, Entry | None] = {}
-        for e in entries:
-            k = key(e)
-            seen[k] = None if k in seen else e  # None = mehrdeutig
-        return {k: v for k, v in seen.items() if v is not None}
-
-    old_map = unique_by_key([c for c in candidates if not c.is_dir])
-    new_map = unique_by_key(added_entries)
+    old_map = _unique_by_key([c for c in candidates if not c.is_dir], meta_key)
+    new_map = _unique_by_key(list(added_entries), meta_key)
 
     moved = 0
     moved_old_ids: set[int] = set()
@@ -187,30 +235,8 @@ def _detect_moves(db: Session, scan: Scan, candidates: list[Entry]) -> tuple[int
         new = new_map.get(k)
         if new is None:
             continue
-        # Annotationen mitnehmen (Core-Update, damit der ORM-Cascade des
-        # alten Eintrags sie nicht mitlöscht).
-        db.execute(
-            update(Annotation)
-            .where(Annotation.entry_id == old.id)
-            .values(entry_id=new.id)
-        )
-        # Der „added“-Change des neuen Eintrags wird zum „moved“.
-        db.execute(
-            delete(EntryChange).where(
-                EntryChange.scan_id == scan.id,
-                EntryChange.entry_id == new.id,
-                EntryChange.change == "added",
-            )
-        )
-        db.add(
-            EntryChange(
-                scan_id=scan.id, entry_id=new.id, change="moved", old_path=old.path
-            )
-        )
-        db.execute(delete(Entry).where(Entry.id == old.id))
+        _apply_move(db, scan, old, new)
         moved_old_ids.add(old.id)
-        scan.added -= 1
-        scan.moved += 1
         moved += 1
     return moved, moved_old_ids
 
@@ -421,6 +447,192 @@ def cleanup_missing(
         db.execute(delete(Entry).where(Entry.id.in_(ids)))
         db.commit()
     return {"deleted": len(ids)}
+
+
+# --- Inhalts-Hash -------------------------------------------------------------
+#
+# Das Hashen läuft bewusst NICHT im Scan mit: es muss jede Datei komplett lesen
+# und würde den Scan um Größenordnungen verlangsamen. Stattdessen ein eigener,
+# jederzeit unterbrechbarer Nachlauf: Der Server sagt, welche Pfade einen Hash
+# brauchen (``/hash-todo``), der Browser rechnet SHA-256 und liefert nur den
+# Hex-String zurück (``/hashes``) – der Inhalt verlässt den Rechner nie.
+
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+# Ein Hash gilt für genau den Dateistand, bei dem er berechnet wurde.
+_HASH_STALE = or_(
+    Entry.hash_state == "",
+    Entry.hash_size.is_(None),
+    Entry.hash_size != Entry.size,
+    Entry.hash_mtime != Entry.mtime,
+)
+
+
+def reconcile_by_hash(db: Session, source: Source, entry: Entry) -> bool:
+    """Ordnet einen frisch gehashten Eintrag einer verschwundenen Datei zu.
+
+    Damit werden **Umbenennungen** erkannt, die die Metadaten-Heuristik des
+    Scans nicht fassen kann (der Name ändert sich ja). Zugeordnet wird nur, wenn
+    es genau eine verschwundene und genau eine vorhandene Datei mit diesem
+    Inhalt gibt – bei mehreren Kandidaten bleibt es bewusst bei
+    „verschwunden + neu“, statt zu raten.
+
+    Gibt True zurück, wenn eine Zuordnung stattgefunden hat.
+    """
+    same_hash = db.scalars(
+        select(Entry).where(
+            Entry.source_id == source.id,
+            Entry.content_hash == entry.content_hash,
+            Entry.hash_state == "ok",
+            Entry.is_dir.is_(False),
+        )
+    ).all()
+    gone = [e for e in same_hash if e.status == "missing"]
+    present = [e for e in same_hash if e.status == "present"]
+    if len(gone) != 1 or len(present) != 1 or present[0].id != entry.id:
+        return False
+
+    old = gone[0]
+    db.execute(
+        update(Annotation).where(Annotation.entry_id == old.id).values(entry_id=entry.id)
+    )
+    db.execute(delete(Entry).where(Entry.id == old.id))
+    return True
+
+
+@router.get("/{source_id}/hash-todo", response_model=list[HashTodoOut])
+def hash_todo(
+    source_id: int,
+    limit: int = Query(default=200, le=5000),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Dateien ohne gültigen Inhalts-Hash – die Arbeitsliste des Nachlaufs.
+
+    Kleine Dateien zuerst: so wächst der Fortschritt sichtbar, und ein
+    abgebrochener Lauf hat trotzdem etwas erledigt.
+    """
+    source = _owned_source(db, user, source_id)
+    entries = db.scalars(
+        select(Entry)
+        .where(
+            Entry.source_id == source.id,
+            Entry.is_dir.is_(False),
+            Entry.status == "present",
+            _HASH_STALE,
+        )
+        .order_by(Entry.size, Entry.path)
+        .limit(limit)
+    ).all()
+    return [
+        HashTodoOut(entry_id=e.id, path=e.path, size=e.size, mtime=e.mtime)
+        for e in entries
+    ]
+
+
+@router.post("/{source_id}/hashes")
+def submit_hashes(
+    source_id: int,
+    batch: HashBatchIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Nimmt berechnete Hashes entgegen und erkennt daraus Umbenennungen."""
+    source = _owned_source(db, user, source_id)
+    paths = [i.path for i in batch.items]
+    if not paths:
+        return {"updated": 0, "reconciled": 0}
+
+    by_path = {
+        e.path: e
+        for e in db.scalars(
+            select(Entry).where(Entry.source_id == source.id, Entry.path.in_(paths))
+        ).all()
+    }
+
+    updated = 0
+    reconciled = 0
+    fresh: list[Entry] = []
+    for item in batch.items:
+        entry = by_path.get(item.path)
+        if entry is None or entry.is_dir:
+            continue  # zwischenzeitlich verschwunden/aufgeräumt
+        state = item.state if item.state in {"ok", "skipped", "error"} else "error"
+        digest = item.sha256.strip().lower()
+        if state == "ok" and not _HEX64.match(digest):
+            raise HTTPException(
+                status_code=422, detail=f"Ungültiger SHA-256-Hash für {item.path}"
+            )
+        entry.content_hash = digest if state == "ok" else ""
+        entry.hash_state = state
+        # Der Hash wird gegen den **Index**-Stand vermerkt, nicht gegen die
+        # Werte, die der Client beim Lesen gesehen hat. Das ist entscheidend:
+        # ``_HASH_STALE`` vergleicht hash_size/hash_mtime mit entry.size/mtime –
+        # trüge man hier abweichende Werte ein (etwa weil der Scan die Datei
+        # nicht lesen konnte und 0 eingetragen hat), bliebe der Eintrag ewig in
+        # der Arbeitsliste und der Nachlauf liefe endlos im Kreis.
+        # Hat sich die Datei seit dem Scan wirklich geändert, fällt das beim
+        # nächsten Scan auf: der aktualisiert size/mtime und entwertet den Hash.
+        entry.hash_size = entry.size
+        entry.hash_mtime = entry.mtime
+        updated += 1
+        if state == "ok":
+            fresh.append(entry)
+
+    db.flush()
+    for entry in fresh:
+        if entry.status == "present" and reconcile_by_hash(db, source, entry):
+            reconciled += 1
+    db.commit()
+    return {"updated": updated, "reconciled": reconciled}
+
+
+@router.get("/{source_id}/hash-summary", response_model=HashSummaryOut)
+def hash_summary(
+    source_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Fortschritt des Hashens einer Quelle (+ Zahl der Duplikat-Gruppen)."""
+    from sqlalchemy import func
+
+    source = _accessible_source(db, user, source_id)
+    base = (
+        Entry.source_id == source.id,
+        Entry.is_dir.is_(False),
+        Entry.status == "present",
+    )
+    files = db.scalar(select(func.count(Entry.id)).where(*base)) or 0
+    pending = db.scalar(select(func.count(Entry.id)).where(*base, _HASH_STALE)) or 0
+
+    def state_count(state: str) -> int:
+        return (
+            db.scalar(
+                select(func.count(Entry.id)).where(
+                    *base, ~_HASH_STALE, Entry.hash_state == state
+                )
+            )
+            or 0
+        )
+
+    groups = db.scalar(
+        select(func.count()).select_from(
+            select(Entry.content_hash)
+            .where(*base, Entry.hash_state == "ok", Entry.content_hash != "")
+            .group_by(Entry.content_hash)
+            .having(func.count(Entry.id) > 1)
+            .subquery()
+        )
+    ) or 0
+
+    return HashSummaryOut(
+        files=files,
+        hashed=state_count("ok"),
+        pending=pending,
+        skipped=state_count("skipped"),
+        errors=state_count("error"),
+        duplicate_groups=groups,
+    )
 
 
 @router.post("/{source_id}/seen")

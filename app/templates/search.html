@@ -7,13 +7,48 @@
 
   <form id="search-form" class="search-bar">
     <input id="search-input" name="q" placeholder="z. B. angebot kunde müller" autofocus>
-    <select id="search-status">
+    <select id="search-status" title="Status">
       <option value="">alle</option>
       <option value="present">vorhanden</option>
       <option value="missing">verschwunden</option>
     </select>
+    <select id="search-fields" title="Worin gesucht wird">
+      <option value="">überall</option>
+      <option value="name">nur Dateiname</option>
+      <option value="name,path">Name &amp; Pfad</option>
+      <option value="path">nur Pfad</option>
+      <option value="notes">nur Notizen &amp; Labels</option>
+    </select>
+    <select id="search-kind" title="Dateien oder Ordner">
+      <option value="">Dateien &amp; Ordner</option>
+      <option value="files">nur Dateien</option>
+      <option value="dirs">nur Ordner</option>
+    </select>
     <button type="submit" class="primary">Suchen</button>
+    <button type="button" id="assist-toggle" title="Frage in Alltagssprache stellen">🤖 Assistent</button>
   </form>
+
+  <form id="assist-form" class="card assist-box" hidden>
+    <p class="muted small">
+      Frag in Alltagssprache – ein Modell übersetzt die Frage in Suchwörter und
+      Filter (Endung, Zeitraum, Größe). Übertragen werden nur deine Frage und die
+      Bezeichnungen deiner Quellen, keine Dateilisten und keine Inhalte.
+    </p>
+    <input id="assist-question" name="question"
+           placeholder="z. B. große PDFs vom letzten Sommer, die ich seither nicht angefasst habe">
+    <div class="assist-controls">
+      <label class="small">Modell
+        <select id="assist-setting"></select>
+      </label>
+      <label class="small">Zusätzliche Hinweise
+        <select id="assist-prompt"><option value="">– keine –</option></select>
+      </label>
+      <button type="submit" class="primary">Fragen</button>
+    </div>
+    <p id="assist-hint" class="muted small" hidden></p>
+  </form>
+
+  <div id="assist-result" class="assist-result" hidden></div>
 
   <div id="results" class="results"></div>
 </div>
