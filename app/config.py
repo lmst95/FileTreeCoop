@@ -34,6 +34,14 @@ class Settings:
         self.encryption_key: str = os.environ.get(
             "FTC_ENCRYPTION_KEY", self.secret_key
         )
+        # Wer die komplette Datenbank als Backup laden darf: Kommaliste aus
+        # Usernames und/oder E-Mails. Leer = nur das zuerst registrierte Konto,
+        # üblicherweise der Betreiber der Instanz.
+        self.backup_admins: set[str] = {
+            part.strip().lower()
+            for part in os.environ.get("FTC_BACKUP_ADMINS", "").split(",")
+            if part.strip()
+        }
         # SSRF-Schutz: verbietet LLM-Basis-URLs auf private/lokale Adressen.
         # Für rein lokale Setups (Ollama auf localhost) auf "false" setzen.
         self.llm_block_private_hosts: bool = (

@@ -36,6 +36,21 @@
       Berechtigung anpassen oder Freigabe löschen.</p>
     <div id="my-shares-list"><p class="muted small">Lädt …</p></div>
   </div>
+
+  {% if can_backup %}
+  <div class="card">
+    <h2>Backup</h2>
+    <p class="muted">Lädt die komplette Datenbank als SQLite-Datei herunter – alle Quellen,
+      Notizen, Übergaben und Konten. Der Auszug wird konsistent erzeugt, auch wenn
+      gerade jemand arbeitet.</p>
+    <p class="warn small">Die Datei enthält die Daten <strong>aller</strong> Nutzer inklusive
+      Passwort-Hashes und gespeicherter LLM-Tokens. Bitte entsprechend sicher aufbewahren.</p>
+    <a class="chip-btn" href="/api/admin/backup.db" download>⬇ Datenbank sichern ({{ db_size }})</a>
+    <p class="muted small">Wiederherstellen: App stoppen, die Datei als
+      <code>filetree_coop.db</code> ins Projektverzeichnis legen (bzw. an den Pfad aus
+      <code>FTC_DB_PATH</code>), App wieder starten.</p>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}
 {% block scripts %}<script src="/static/js/profile.js"></script>{% endblock %}

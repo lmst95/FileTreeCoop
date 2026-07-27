@@ -9,14 +9,16 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
 
 from app.auth import get_optional_user
-from app.db import init_db
+from app.db import get_db, init_db
 from app.models import User
 from app.routers import (
     activity,
     annotations,
     auth,
+    backup,
     entries,
     export,
     llm,
@@ -46,6 +48,7 @@ app.include_router(annotations.router)
 app.include_router(activity.router)
 app.include_router(export.router)
 app.include_router(llm.router)
+app.include_router(backup.router)
 
 
 @app.get("/health")
@@ -142,9 +145,20 @@ def llm_page(request: Request, user: User | None = Depends(get_optional_user)):
 
 
 @app.get("/profile", response_class=HTMLResponse)
-def profile_page(request: Request, user: User | None = Depends(get_optional_user)):
+def profile_page(
+    request: Request,
+    user: User | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
     if user is None:
         return RedirectResponse(url="/login", status_code=302)
     return templates.TemplateResponse(
-        "profile.html", {"request": request, "user": user}
+        "profile.html",
+        {
+            "request": request,
+            "user": user,
+            # Backup-Karte nur für das Betreiber-Konto einblenden.
+            "can_backup": backup.is_backup_admin(db, user),
+            "db_size": backup.database_size_human(),
+        },
     )

@@ -97,6 +97,14 @@ Outlook/Apple/Google Calendar), ⬇ **CSV** aller Annotationen (Übersicht,
 Excel-tauglich) und ⬇ **JSON** je Quelle (Dashboard, komplettes Backup samt
 Annotationen).
 
+**Voll-Backup:** ⬇ **Datenbank sichern** (Profil → Backup,
+`/api/admin/backup.db`) lädt die komplette SQLite-Datei – konsistent erzeugt
+über die Online-Backup-API, auch während gearbeitet wird. Weil die Datei *alle*
+Nutzer samt Passwort-Hashes und LLM-Tokens enthält, darf das nur ein
+Betreiber-Konto: standardmäßig das zuerst registrierte, per
+`FTC_BACKUP_ADMINS` frei festlegbar. Wiederherstellen = App stoppen, Datei nach
+`FTC_DB_PATH` legen, App starten.
+
 **Bedienung (Explorer-Stil):** kompakte Zeilen; Annotationen erscheinen als kleine
 **Chips** (`#label`, `📝 2`, `☑ 1/3`, `➦ Bob`, `📅 23.7.2026` für den nächsten
 offenen Termin – rot, sobald er überfällig ist). Rechts in jeder Zeile erscheinen
@@ -173,13 +181,14 @@ app/
   search.py          FTS5-Query-Builder (Präfix, bm25-Ranking)
   serializers.py     Annotationen inkl. Autor- und Empfängername
   routers/           auth, sources (+ingest/scans/shares/invites/members/seen/missing),
-                     entries, search, annotations, activity (+notifications), export
+                     entries, search, annotations, activity (+notifications), export,
+                     backup (Voll-Dump der DB, nur Betreiber)
   templates/         login, dashboard, browse, search, overview, handovers, calendar, activity
   static/js/         app, entry_ui, palette, auth, scanner, dashboard, tree, search,
                      overview, handovers, calendar, activity
 migrations/          Alembic (0001 Baseline, 0002 Kooperations-Ausbau)
 tests/               ingest, scans, search, annotations, threads, handover_flow,
-                     activity, invites, cleanup, export, … (pytest + TestClient)
+                     activity, invites, cleanup, export, backup, … (pytest + TestClient)
 ```
 
 ## Datenmodell (Kurzform)
@@ -262,6 +271,7 @@ registriert und `/api/llm/run` mit passendem `target_kind` aufruft — ohne
 | `FTC_ENCRYPTION_KEY` | = `FTC_SECRET_KEY` | Schlüssel für die Verschleierung gespeicherter LLM-Tokens |
 | `FTC_LLM_BLOCK_PRIVATE_HOSTS` | `false` | LLM-Basis-URLs auf private/lokale Adressen sperren (SSRF-Schutz); `false` lässt localhost/Ollama zu |
 | `FTC_LLM_TIMEOUT_SECONDS` | `60` | Timeout ausgehender LLM-Requests |
+| `FTC_BACKUP_ADMINS` | *(leer)* | Wer die ganze DB laden darf: Usernames/E-Mails, kommagetrennt; leer = zuerst registriertes Konto |
 
 ## Bekannte Grenzen / Roadmap
 
