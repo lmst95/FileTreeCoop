@@ -10,11 +10,23 @@ async function api(path, { method = "GET", body, headers = {} } = {}) {
   const res = await fetch(path, opts);
   if (res.status === 204) return null;
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  // Fehlerantworten sind nicht immer JSON (z. B. der Klartext-500 von Uvicorn),
+  // deshalb tolerant parsen und im Zweifel den Rohtext als Meldung nutzen.
+  let data = null;
+  let parseFailed = false;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      parseFailed = true;
+    }
+  }
   if (!res.ok) {
-    const detail = data && data.detail ? data.detail : res.statusText;
+    let detail = data && data.detail ? data.detail : null;
+    if (!detail) detail = parseFailed ? text.slice(0, 300) : res.statusText;
     throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
+  if (parseFailed) throw new Error("Ungültige Antwort vom Server");
   return data;
 }
 

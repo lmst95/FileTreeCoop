@@ -66,11 +66,26 @@ def guard_url(base_url: str) -> None:
 
 
 def config_from_connection(connection) -> ProviderConfig:
-    """Baut die Adapter-Konfiguration aus einer ``LLMConnection`` (Token entschlüsselt)."""
+    """Baut die Adapter-Konfiguration aus einer ``LLMConnection`` (Token entschlüsselt).
+
+    Passt der konfigurierte Schlüssel nicht mehr zum gespeicherten Token (z. B.
+    weil ``FTC_SECRET_KEY``/``FTC_ENCRYPTION_KEY`` geändert wurde), wird daraus
+    ein ``LLMError`` – so bekommt das UI eine verständliche Meldung statt eines
+    500ers.
+    """
+    try:
+        api_key = crypto.decrypt_optional(connection.api_key_enc)
+    except crypto.TokenDecryptError as exc:
+        raise LLMError(
+            f"API-Key der Verbindung „{connection.label}“ kann nicht entschlüsselt "
+            "werden – der Verschlüsselungsschlüssel (FTC_SECRET_KEY bzw. "
+            "FTC_ENCRYPTION_KEY) hat sich geändert. Bitte den API-Key in den "
+            "KI-Einstellungen neu speichern."
+        ) from exc
     return ProviderConfig(
         provider_type=connection.provider_type,
         base_url=connection.base_url,
-        api_key=crypto.decrypt_optional(connection.api_key_enc),
+        api_key=api_key,
         extra=json_obj(connection.extra_json),
     )
 

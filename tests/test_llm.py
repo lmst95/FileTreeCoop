@@ -11,7 +11,12 @@ import pytest
 from app.llm import crypto
 from app.llm.providers import ProviderConfig, build_provider
 from app.llm.providers.base import LLMError, Provider
-from app.llm.service import PLACEHOLDER, guard_url, render_prompt
+from app.llm.service import (
+    PLACEHOLDER,
+    config_from_connection,
+    guard_url,
+    render_prompt,
+)
 
 
 # --- Krypto ------------------------------------------------------------------
@@ -36,6 +41,26 @@ def test_crypto_optional_helpers():
     assert crypto.decrypt_optional(None) is None
     enc = crypto.encrypt_optional("x")
     assert crypto.decrypt_optional(enc) == "x"
+
+
+def test_config_from_connection_maps_key_mismatch_to_llm_error():
+    """Passt der Schlüssel nicht mehr, muss ein LLMError (502) statt eines 500ers kommen."""
+    class _Conn:
+        label = "OpenAI"
+        provider_type = "openai"
+        base_url = "https://api.openai.com/v1"
+        api_key_enc = crypto.encrypt("sk-alt")
+        extra_json = None
+
+    from app.config import settings
+    original = settings.encryption_key
+    settings.encryption_key = original + "-anders"
+    try:
+        with pytest.raises(LLMError) as exc:
+            config_from_connection(_Conn())
+    finally:
+        settings.encryption_key = original
+    assert "neu speichern" in str(exc.value)
 
 
 # --- Prompt-Rendering --------------------------------------------------------
