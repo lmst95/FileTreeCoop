@@ -941,7 +941,8 @@ input[type="date"]:hover { background: var(--hover); }
   line-height: 1.55; font-size: 0.95rem;
   padding-right: 0.3rem;
 }
-.note-modal-actions { display: flex; gap: 0.5rem; margin-top: 0.7rem; }
+.note-modal-actions { display: flex; gap: 0.5rem; margin-top: 0.7rem; align-items: center; }
+.note-save-state { margin-left: auto; text-align: right; }
 
 .note-color-picker { display: flex; gap: 0.5rem; margin-bottom: 0.7rem; }
 .note-color-dot {
@@ -1211,6 +1212,7 @@ input[type="date"]:hover { background: var(--hover); }
   .note-modal-body-text { max-height: none; }
   .note-modal-actions { flex-wrap: wrap; }
   .note-modal-actions button { flex: 1 1 auto; }
+  .note-save-state { flex: 1 1 100%; margin-left: 0; text-align: left; }
   .note-ai-controls label { flex: 1 1 100%; min-width: 0; }
   .note-ai-output { min-height: 26dvh !important; }
 

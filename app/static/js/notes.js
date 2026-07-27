@@ -96,7 +96,14 @@ board.addEventListener("click", (e) => {
 
 // --- Modal-Grundgerüst --------------------------------------------------------
 
+// Wird vor dem Schließen aufgerufen (Klick daneben, Escape, ✕) – so gehen
+// offene Änderungen im Bearbeiten-Modus nicht verloren.
+let onBeforeCloseModal = null;
+
 function closeModal() {
+  const beforeClose = onBeforeCloseModal;
+  onBeforeCloseModal = null;
+  if (beforeClose) beforeClose(); // liest die Feldwerte synchron, speichert danach
   if (overlay) {
     overlay.remove();
     overlay = null;
@@ -156,7 +163,8 @@ function noteDetailHtml(n) {
     : `<div class="note-modal-body-text">${escapeHtml(n.body)}</div>`;
   const actions = n.is_mine
     ? `<button type="button" class="tiny primary" data-save-note>speichern</button>
-       <button type="button" class="link-btn danger tiny" data-delete-note>löschen</button>`
+       <button type="button" class="link-btn danger tiny" data-delete-note>löschen</button>
+       <span class="note-save-state muted small" id="note-save-state">wird automatisch gespeichert</span>`
     : "";
   const shareSection = n.is_mine && !n.entry_id
     ? `<div class="note-share-section">
@@ -207,6 +215,110 @@ async function loadNoteShares(noteId, box) {
   }
 }
 
+// --- Auto-Speichern im Bearbeiten-Modus ---------------------------------------
+
+const AUTOSAVE_DELAY_MS = 900;
+
+// Speichert Text und Farbe verzögert nach dem Tippen und spätestens beim
+// Schließen des Modals. `getColor` liefert die aktuell gewählte Farbe.
+function setupAutosave(note, box, getColor) {
+  const textarea = box.querySelector("#note-edit-body");
+  if (!textarea) return null; // fremde Notiz: nur Lesemodus
+  const stateEl = box.querySelector("#note-save-state");
+
+  let timer = null;
+  let inFlight = null;
+  let savedBody = note.body || "";
+  let savedColor = getColor();
+
+  function setState(text, kind = "muted") {
+    if (!stateEl || !stateEl.isConnected) return;
+    stateEl.className = `note-save-state small ${kind}`;
+    stateEl.textContent = text;
+  }
+
+  function isDirty(body, color) {
+    return body !== savedBody || color !== savedColor;
+  }
+
+  async function save() {
+    clearTimeout(timer);
+    timer = null;
+    // Werte synchron abgreifen – beim Schließen ist das Modal gleich weg.
+    const body = textarea.value;
+    const color = getColor();
+    if (!isDirty(body, color)) return true;
+    if (!body.trim()) {
+      setState("leere Notiz – nicht gespeichert", "error");
+      return false;
+    }
+    setState("speichert …");
+    if (inFlight) await inFlight.catch(() => {}); // Saves nicht überholen lassen
+    inFlight = api(`/api/annotations/${note.id}`, {
+      method: "PATCH",
+      body: { body: body.trim(), color },
+    });
+    try {
+      const updated = await inFlight;
+      savedBody = body;
+      savedColor = color;
+      Object.assign(note, updated); // Karte auf der Pinnwand aktualisieren
+      renderBoard();
+      setState(`gespeichert · ${new Date().toLocaleTimeString("de-DE")}`);
+      return true;
+    } catch (err) {
+      setState(err.message, "error");
+      if (!stateEl || !stateEl.isConnected) {
+        toast(`Notiz nicht gespeichert: ${err.message}`, "error");
+      }
+      return false;
+    } finally {
+      inFlight = null;
+    }
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    if (!isDirty(textarea.value, getColor())) return;
+    setState("nicht gespeichert …");
+    timer = setTimeout(save, AUTOSAVE_DELAY_MS);
+  }
+
+  // Beim Verlassen der Seite bleibt keine Zeit für einen normalen Request.
+  function saveOnPageHide() {
+    const body = textarea.value;
+    const color = getColor();
+    if (!isDirty(body, color) || !body.trim()) return;
+    fetch(`/api/annotations/${note.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: body.trim(), color }),
+      credentials: "same-origin",
+      keepalive: true,
+    }).catch(() => {});
+  }
+
+  textarea.addEventListener("input", schedule);
+  window.addEventListener("pagehide", saveOnPageHide);
+
+  return {
+    schedule,
+    save,
+    // Nach dem Übernehmen einer KI-Fassung steht der Text schon auf dem Server;
+    // eine offene Farbänderung bleibt bewusst als „ungespeichert" markiert.
+    markSaved(body) {
+      clearTimeout(timer);
+      timer = null;
+      savedBody = body;
+      textarea.value = body;
+    },
+    destroy() {
+      clearTimeout(timer);
+      window.removeEventListener("pagehide", saveOnPageHide);
+    },
+  };
+}
+
 // --- KI-Überarbeitung (Tab „KI-überarbeitet") --------------------------------
 
 // Feature-Optionen (Prompts + Settings für "notes") einmal je Seitenaufruf laden.
@@ -218,7 +330,7 @@ async function getNotesLlmOptions() {
   return notesLlmOptions;
 }
 
-function initAiPanel(note, box) {
+function initAiPanel(note, box, autosave) {
   const promptSel = box.querySelector("#ai-prompt");
   const settingSel = box.querySelector("#ai-setting");
   const runBtn = box.querySelector("[data-ai-run]");
@@ -322,6 +434,7 @@ function initAiPanel(note, box) {
       if (!text) return;
       try {
         await api(`/api/annotations/${note.id}`, { method: "PATCH", body: { body: text } });
+        if (autosave) autosave.markSaved(text); // Autosave darf das nicht überschreiben
         closeModal();
         await loadNotes();
         toast("Überarbeitung übernommen.", "success");
@@ -350,6 +463,19 @@ function initAiPanel(note, box) {
 async function openNoteModal(note) {
   const box = openOverlay(noteDetailHtml(note));
   let selectedColor = COLORS.includes(note.color) ? note.color : "yellow";
+  const autosave = setupAutosave(note, box, () => selectedColor);
+
+  function stopAutosave() {
+    onBeforeCloseModal = null;
+    if (autosave) autosave.destroy();
+  }
+
+  if (autosave) {
+    onBeforeCloseModal = () => {
+      autosave.destroy();
+      autosave.save();
+    };
+  }
 
   // Tab-Wechsel Original <-> KI-überarbeitet.
   box.querySelectorAll("[data-note-tab]").forEach((btn) => {
@@ -362,7 +488,7 @@ async function openNoteModal(note) {
     });
   });
 
-  initAiPanel(note, box);
+  initAiPanel(note, box, autosave);
 
   box.addEventListener("click", async (e) => {
     if (e.target.closest("[data-close-modal]")) {
@@ -374,29 +500,23 @@ async function openNoteModal(note) {
       selectedColor = dot.dataset.color;
       box.querySelectorAll(".note-color-dot").forEach((d) =>
         d.classList.toggle("selected", d.dataset.color === selectedColor));
+      if (autosave) autosave.schedule();
       return;
     }
     if (e.target.closest("[data-save-note]")) {
-      const body = box.querySelector("#note-edit-body").value.trim();
-      if (!body) {
+      if (!box.querySelector("#note-edit-body").value.trim()) {
         toast("Notiz darf nicht leer sein.", "error");
         return;
       }
-      try {
-        await api(`/api/annotations/${note.id}`, {
-          method: "PATCH",
-          body: { body, color: selectedColor },
-        });
+      if (await autosave.save()) {
         closeModal();
-        await loadNotes();
         toast("Notiz gespeichert.", "success");
-      } catch (err) {
-        toast(err.message, "error");
       }
       return;
     }
     if (e.target.closest("[data-delete-note]")) {
       if (!confirm("Notiz wirklich löschen?")) return;
+      stopAutosave(); // gelöschte Notiz nicht beim Schließen erneut speichern
       try {
         await api(`/api/annotations/${note.id}`, { method: "DELETE" });
         closeModal();
