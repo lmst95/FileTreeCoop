@@ -11,6 +11,11 @@ wählst du einen Ordner, JavaScript läuft rekursiv durch den Baum und überträ
 nur Metadaten (Pfad, Name, Größe, Änderungsdatum) an den Server — kein
 Dateiinhalt, keine Agent-Installation.
 
+![Volltextsuche über Namen, Pfade, Notizen und Labels](docs/media/02-suche.gif)
+
+> Alle Aufnahmen in dieser README zeigen die Anwendung mit einem generierten
+> Demo-Datenbestand — echte Dateien sind darin nicht enthalten.
+
 ## Schnellstart
 
 ```bash
@@ -38,6 +43,9 @@ pytest -q
    erfasst alle Dateien/Ordner darunter und schickt sie in Batches an den Server.
    Der Ordner-Handle wird in IndexedDB gemerkt → **„Erneut scannen“** ohne Dialog.
    Optional danach **🔐 Inhalts-Hashes** (siehe unten).
+
+   ![Quellen-Übersicht mit Scan-Diff, Scan-Historie und Freigaben](docs/media/01-quellen-scans.gif)
+
 4. **Finden** — auf zwei Wegen:
    - **Suche** (`/search`): Freitext über Name, Pfad, Notizen und Labels (SQLite
      FTS5, mit Präfix-Matching, z. B. findet `rech` den Ordner `Rechnungen`).
@@ -55,6 +63,9 @@ pytest -q
    tragen (Datumsfeld im Editor, später jederzeit in der Detailliste änderbar;
    leeres Feld = kein Termin). Notizen überleben Re-Scans; verschwundene Dateien
    werden als *„verschwunden“* markiert, ohne die Notizen zu verlieren.
+
+   ![Im Baum navigieren und per Action-Icon ein Todo mit Termin anlegen](docs/media/03-baum-annotieren.gif)
+
 6. **Teilen & Übergeben** — per E-Mail an Kollegen freigeben (*nur lesen* oder
    *annotieren*), inklusive aller Notizen/Todos darin. Zwei Granularitäten:
    - **Ganze Quelle** — im Dashboard über „Teilen“.
@@ -72,6 +83,9 @@ pytest -q
    nimmt an, erledigt und öffnet wieder – der Empfänger darf das auch, wenn er
    sonst nur Leserechte hat. Neue Übergaben und Überfälliges erscheinen als
    **Badge in der Navigation**.
+
+   ![Übergaben annehmen und erledigen, „An mich“ und „Von mir“](docs/media/04-uebergaben.gif)
+
 6b. **Diskutieren** — auf jede Annotation lässt sich per ↩ **antworten**
    (kleine Threads); jede Annotation zeigt **Autor und Datum**.
 6c. **Aktivität** (`/activity`) — „Was ist passiert, seit ich weg war?“:
@@ -93,6 +107,8 @@ pytest -q
 
    Beide teilen die Filter **Quelle**, „**nur offene**“ (standardmäßig an) und
    „**an mich übergeben**“; abhaken geht direkt in beiden Ansichten.
+
+   ![Übersicht nach Typ und Label filtern, dann derselbe Bestand im Kalender](docs/media/05-uebersicht-kalender.gif)
 
 **Mehrere Annotationen pro Datei** sind ausdrücklich möglich — beliebig viele
 Notizen, Todos, Labels und Übergaben nebeneinander.
@@ -208,6 +224,8 @@ Was das bringt:
 Beantwortet „wo ist mein Platz hin?“ – allein aus dem Index, ohne die Dateien
 erneut zu lesen:
 
+![Kennzahlen, Ordner-Drilldown, Dateitypen, größte Dateien und Duplikate](docs/media/06-speicher.gif)
+
 - **Kennzahlen** — belegt, Dateien, Ordner, verschwunden.
 - **Ordner-Drilldown** — jede Ebene mit **rekursiver** Größe je Unterordner
   (eine SQL-Query pro Ebene, nicht eine pro Ordner); Klick geht tiefer.
@@ -228,6 +246,8 @@ Auf `/search` öffnet **🤖 Assistent** ein Feld für Fragen in Alltagssprache
 Suchwörter, Quelle, Endung, Zeitraum, Größe, Status, Datei/Ordner. Die Antwort
 wird **streng validiert** (unbekannte Felder, fremde Quellen-IDs und kaputte
 Datumsangaben fallen heraus), erst dann läuft die ganz normale Suche.
+
+![Frage in Alltagssprache wird zu Suchfiltern und liefert Treffer](docs/media/07-ki-suchassistent.gif)
 
 Das Ergebnis zeigt offen, *wie* die Frage verstanden wurde (Chips mit den
 erkannten Filtern) und übernimmt die Suchwörter ins normale Feld – von dort
@@ -338,6 +358,8 @@ es:
 - **Notizen** — jede Notiz hat die Tabs *Original* und *KI-überarbeitet*, in dem
   sich Prompt + Setting wählen und das Ergebnis übernehmen oder als neue Notiz
   speichern lässt.
+
+  ![Notiz-Pinnwand, Notiz öffnen und im Tab „KI-überarbeitet“ überarbeiten lassen](docs/media/08-ki-notizen.gif)
 - **Suche** — der [Suchassistent](#suchassistent-) übersetzt eine Frage in
   Suchfilter. Ein hier zugeordneter Prompt liefert dem Modell *zusätzliche
   Hinweise*; die eigentliche Anweisung samt Antwortschema baut der Server
