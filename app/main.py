@@ -21,6 +21,7 @@ from app.routers import (
     backup,
     entries,
     export,
+    ignores,
     llm,
     search,
     sources,
@@ -45,6 +46,7 @@ app.include_router(auth.router)
 app.include_router(sources.router)
 app.include_router(entries.router)
 app.include_router(search.router)
+app.include_router(ignores.router)
 app.include_router(annotations.router)
 app.include_router(activity.router)
 app.include_router(export.router)

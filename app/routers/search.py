@@ -17,6 +17,7 @@ from app import search_assist
 from app.access import accessible_scopes
 from app.auth import get_current_user
 from app.db import get_db
+from app.ignores import active_rules
 from app.llm import service
 from app.llm.jsonutil import json_obj
 from app.llm.providers import LLMError
@@ -32,8 +33,10 @@ from app.models import (
 )
 from app.schemas import SearchAssistIn, SearchAssistOut, SearchFiltersOut, SearchHit
 from app.search import (
+    SEARCH_MODES,
     SearchFilters,
-    build_match_query,
+    SearchQueryError,
+    build_query,
     clean_fields,
     search_entry_ids,
 )
@@ -112,6 +115,10 @@ def _field_list(raw: str | None) -> list[str]:
 @router.get("", response_model=list[SearchHit])
 def search(
     q: str = Query(default="", description="Beschreibender Suchstring"),
+    mode: str = Query(
+        default="smart",
+        description="smart (Volltext) | exact (Teilstring) | glob (*.pdf) | regex",
+    ),
     source_id: int | None = None,
     status: str | None = Query(default=None, description="present|missing"),
     fields: str | None = Query(
@@ -124,10 +131,18 @@ def search(
     min_size: int | None = Query(default=None, ge=0, description="Mindestgröße in Bytes"),
     max_size: int | None = Query(default=None, ge=0, description="Maximalgröße in Bytes"),
     is_dir: bool | None = Query(default=None),
+    apply_ignores: bool = Query(
+        default=True, description="Gespeicherte Ignorierregeln anwenden"
+    ),
     limit: int = Query(default=100, le=500),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if mode not in SEARCH_MODES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unbekannter Suchmodus: {mode}",
+        )
     filters = SearchFilters(
         source_id=source_id,
         status=status,
@@ -142,11 +157,16 @@ def search(
         max_size=max_size,
         is_dir=is_dir,
     )
+    try:
+        query = build_query(q, mode, _field_list(fields))
+    except SearchQueryError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     entry_ids = search_entry_ids(
         db,
-        build_match_query(q, _field_list(fields)),
+        query,
         accessible_scopes(db, user),
         filters=filters,
+        ignores=active_rules(db, user) if apply_ignores else [],
         limit=limit,
     )
     return _hits_for(db, user, entry_ids)
@@ -216,9 +236,12 @@ def assist(
 
     entry_ids = search_entry_ids(
         db,
-        build_match_query(parsed.query),
+        build_query(parsed.query),
         scopes,
         filters=parsed.filters,
+        # Auch der Assistent respektiert die Ignorierregeln – sonst tauchte im
+        # Assistenten-Ergebnis wieder auf, was der Nutzer bewusst ausblendet.
+        ignores=active_rules(db, user),
         limit=data.limit,
     )
     f = parsed.filters

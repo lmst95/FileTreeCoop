@@ -7,6 +7,12 @@
 
   <form id="search-form" class="search-bar">
     <input id="search-input" name="q" placeholder="z. B. angebot kunde müller" autofocus>
+    <select id="search-mode" title="Wie gesucht wird">
+      <option value="smart">Volltext</option>
+      <option value="exact">wörtlich</option>
+      <option value="glob">Platzhalter (*)</option>
+      <option value="regex">Regex</option>
+    </select>
     <select id="search-status" title="Status">
       <option value="">alle</option>
       <option value="present">vorhanden</option>
@@ -26,7 +32,40 @@
     </select>
     <button type="submit" class="primary">Suchen</button>
     <button type="button" id="assist-toggle" title="Frage in Alltagssprache stellen">🤖 Assistent</button>
+    <button type="button" id="ignore-toggle" title="Ordner und Dateinamen dauerhaft ausblenden">🚫 Ignorieren</button>
   </form>
+
+  <p id="mode-hint" class="muted small mode-hint"></p>
+
+  <section id="ignore-box" class="card ignore-box" hidden>
+    <h2 class="small-title">Dauerhaft ausblenden</h2>
+    <p class="muted small">
+      Was hier steht, taucht in keiner deiner Suchen mehr auf – auch nicht beim
+      Assistenten. Nichts wird gelöscht: Regel abschalten oder löschen, und die
+      Treffer sind sofort wieder da. Ein Ordner nimmt alles unter sich mit.
+    </p>
+    <form id="ignore-form" class="ignore-form">
+      <select id="ignore-kind" title="Was ausgeblendet wird">
+        <option value="path">Ordner/Pfad</option>
+        <option value="name">Dateiname</option>
+      </select>
+      <input id="ignore-pattern" placeholder="z. B. Archiv/2019 oder **/node_modules">
+      <select id="ignore-source" title="Wo die Regel gilt">
+        <option value="">alle Quellen</option>
+      </select>
+      <button type="submit" class="primary">Hinzufügen</button>
+    </form>
+    <p class="muted small">
+      Platzhalter erlaubt: <code>*</code> (beliebig, ohne <code>/</code>),
+      <code>**</code> (auch über Ordnergrenzen), <code>?</code> (ein Zeichen).
+      Beispiele: <code>*.tmp</code>, <code>~$*</code>, <code>**/node_modules</code>.
+    </p>
+    <div id="ignore-list" class="ignore-list"></div>
+    <label class="small ignore-apply">
+      <input type="checkbox" id="ignore-apply" checked>
+      Regeln auf diese Suche anwenden
+    </label>
+  </section>
 
   <form id="assist-form" class="card assist-box" hidden>
     <p class="muted small">

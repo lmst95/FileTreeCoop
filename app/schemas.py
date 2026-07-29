@@ -540,6 +540,33 @@ class SearchHit(BaseModel):
     has_new: bool = False
 
 
+class IgnoreRuleIn(BaseModel):
+    """Ein dauerhafter Ausschluss aus der Suche."""
+    kind: str = Field(default="path")  # path | name
+    pattern: str = Field(min_length=1, max_length=500)
+    # None = gilt in allen Quellen.
+    source_id: int | None = None
+    note: str = Field(default="", max_length=300)
+
+
+class IgnoreRulePatch(BaseModel):
+    pattern: str | None = Field(default=None, min_length=1, max_length=500)
+    active: bool | None = None
+    source_id: int | None = None
+    note: str | None = Field(default=None, max_length=300)
+
+
+class IgnoreRuleOut(BaseModel):
+    id: int
+    kind: str
+    pattern: str
+    source_id: int | None = None
+    source_label: str | None = None
+    active: bool = True
+    note: str = ""
+    created_at: datetime
+
+
 class SearchAssistIn(BaseModel):
     """Frage in Alltagssprache + das LLM-Setting, das sie übersetzen soll."""
     question: str = Field(min_length=1, max_length=1000)

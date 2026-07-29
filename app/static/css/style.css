@@ -1435,3 +1435,38 @@ a.bar-row:hover, .bar-row[data-open]:hover { background: var(--hover); }
 }
 .assist-explain { margin: 0 0 0.4rem; }
 .assist-filters { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+
+/* --- Suchmodi & Ignorierregeln --------------------------------------------- */
+
+.mode-hint { margin: -0.9rem 0 1rem; }
+.mode-hint code, .ignore-box code {
+  background: var(--hover);
+  border-radius: 5px;
+  padding: 0.05rem 0.32rem;
+  font-size: 0.92em;
+}
+
+.ignore-box { margin: 0.8rem 0 1.2rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.small-title { font-size: 1.02rem; margin: 0; }
+.ignore-form { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.ignore-form input { flex: 1 1 16rem; min-width: 0; }
+.ignore-list { display: flex; flex-direction: column; gap: 0.3rem; }
+.ignore-rule {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hairline);
+}
+.ignore-rule.off { opacity: 0.5; }
+.ignore-rule .ignore-pattern { word-break: break-all; }
+/* Die Checkbox steht für sich – ohne das Spaltenlayout der übrigen Labels. */
+.ignore-active { flex-direction: row; margin: 0; }
+.ignore-apply { flex-direction: row; align-items: center; gap: 0.4rem; }
+
+@media (max-width: 640px) {
+  .ignore-form input { flex: 1 1 100%; }
+  .ignore-form select, .ignore-form button { flex: 1 1 auto; }
+  .mode-hint { margin: -0.6rem 0 0.9rem; }
+}

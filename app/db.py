@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 from app.models import Base
+from app.patterns import regexp as _regexp
 
 engine: Engine = create_engine(
     settings.db_url,
@@ -26,10 +27,16 @@ engine: Engine = create_engine(
 
 @event.listens_for(engine, "connect")
 def _set_sqlite_pragma(dbapi_connection, _connection_record) -> None:
-    """Foreign-Keys in SQLite aktivieren (per Verbindung nötig)."""
+    """Foreign-Keys aktivieren und ``REGEXP`` bereitstellen (je Verbindung nötig).
+
+    SQLite kennt den Operator ``REGEXP`` syntaktisch, liefert aber keine
+    Implementierung mit – die kommt hier aus Python. Darauf bauen die Suchmodi
+    „regex“/„glob“ und die Ignorierregeln auf.
+    """
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
+    dbapi_connection.create_function("regexp", 2, _regexp, deterministic=True)
 
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)

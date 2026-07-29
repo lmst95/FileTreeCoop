@@ -303,6 +303,44 @@ class SourceVisit(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class IgnoreRule(Base):
+    """Ein gespeicherter Ausschluss aus der Suche (Ordnerbaum oder Dateiname).
+
+    Regeln gehören dem Nutzer, sind dauerhaft und wirken auf **jede** seiner
+    Suchen – auch auf die des Suchassistenten. Sie löschen nichts und ändern den
+    Index nicht; sie blenden nur aus.
+
+    - ``kind == "path"``: ein Ordner (oder eine Datei) samt allem darunter.
+      Klartext-Pfade wirken als Präfix (``Archiv/2019`` blendet
+      ``Archiv/2019/alt/x.pdf`` mit aus), Muster mit Platzhaltern über Regex
+      (``**/node_modules``).
+    - ``kind == "name"``: ein Dateiname als Glob-Muster (``*.tmp``,
+      ``.DS_Store``) – unabhängig davon, wo er liegt.
+
+    ``source_id is None`` heißt: gilt in allen Quellen.
+    """
+
+    __tablename__ = "ignore_rules"
+    __table_args__ = (
+        Index("ix_ignore_rules_user_active", "user_id", "active"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # None = alle Quellen; sonst nur diese eine.
+    source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sources.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(10), default="path")  # path | name
+    pattern: Mapped[str] = mapped_column(Text)
+    # Vorübergehend abschaltbar, ohne die Regel zu verlieren.
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Invite(Base):
     """Ausstehende Freigabe an eine E-Mail ohne Konto.
 

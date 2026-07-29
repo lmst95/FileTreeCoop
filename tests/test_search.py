@@ -70,3 +70,86 @@ def test_search_only_own_sources(client, second_client):
     # Nutzer B darf davon nichts finden.
     hits = _search(second_client, "mueller")
     assert hits == []
+
+
+# --- Operatoren im Volltextmodus --------------------------------------------
+
+def test_search_excludes_with_minus(client):
+    _setup_source_with_files(client)
+    assert any(h["name"] == "kunde_mueller.pdf" for h in _search(client, "kunde"))
+    assert _search(client, "kunde -mueller") == []
+
+
+def test_search_or_operator(client):
+    _setup_source_with_files(client)
+    names = {h["name"] for h in _search(client, "mueller OR notizen")}
+    assert {"kunde_mueller.pdf", "notizen.md"} <= names
+
+
+def test_search_quoted_phrase(client):
+    sid = _setup_source_with_files(client)
+    entry = [h for h in client.get(f"/api/sources/{sid}/entries").json()
+             if h["name"] == "notizen.md"][0]
+    client.post("/api/annotations", json={
+        "entry_id": entry["entry_id"], "type": "note",
+        "body": "Vorbereitung der Steuerunterlagen"})
+
+    # Als Wortfolge nur in dieser Reihenfolge – und ohne Präfix-Toleranz.
+    assert len(_search(client, '"vorbereitung der steuerunterlagen"')) == 1
+    assert _search(client, '"steuerunterlagen vorbereitung"') == []
+    assert _search(client, '"vorbereitung der steuer"') == []
+
+
+def test_search_only_exclusions_finds_nothing(client):
+    """„alles außer X“ kann FTS5 nicht – und soll nicht alles ausgeben."""
+    _setup_source_with_files(client)
+    assert _search(client, "-mueller") == []
+
+
+# --- Modi: exact | glob | regex ---------------------------------------------
+
+def test_search_exact_substring(client):
+    """Der Tokenizer zerlegt „2026_01“ – wörtlich gesucht bleibt es ganz."""
+    _setup_source_with_files(client)
+    hits = _search(client, "2026_01", mode="exact")
+    assert [h["name"] for h in hits] == ["2026_01.xlsx"]
+    # Teilstring mitten im Namen (was Präfix-Matching nicht findet).
+    assert _search(client, "mueller.pdf", mode="exact")
+
+
+def test_search_glob(client):
+    _setup_source_with_files(client)
+    assert {h["name"] for h in _search(client, "*.pdf", mode="glob")} == {
+        "kunde_mueller.pdf"
+    }
+    # Muster über den Pfad, inkl. Ordner-Ebene.
+    assert {h["name"] for h in _search(client, "Rechnungen/*", mode="glob")} == {
+        "2026_01.xlsx"
+    }
+    # Vollständiges Matching: "*.pd" trifft die .pdf-Datei nicht.
+    assert _search(client, "*.pd", mode="glob") == []
+
+
+def test_search_glob_is_case_insensitive(client):
+    _setup_source_with_files(client)
+    assert _search(client, "KUNDE_*.PDF", mode="glob")
+
+
+def test_search_regex(client):
+    _setup_source_with_files(client)
+    hits = _search(client, r"^\d{4}_\d{2}\.xlsx$", mode="regex", fields="name")
+    assert [h["name"] for h in hits] == ["2026_01.xlsx"]
+    # Alternativen
+    assert len(_search(client, r"\.(pdf|md)$", mode="regex", fields="name")) == 2
+
+
+def test_search_invalid_regex_is_reported(client):
+    _setup_source_with_files(client)
+    r = client.get("/api/search", params={"q": "(unclosed", "mode": "regex"})
+    assert r.status_code == 422
+    assert "Ausdruck" in r.json()["detail"]
+
+
+def test_search_unknown_mode_rejected(client):
+    r = client.get("/api/search", params={"q": "x", "mode": "zauberei"})
+    assert r.status_code == 422
