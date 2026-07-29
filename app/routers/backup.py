@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
-from app.auth import get_current_user
+from app.auth import get_session_user
 from app.config import settings
 from app.db import engine, get_db
 from app.models import User, utcnow
@@ -84,7 +84,9 @@ def _snapshot(target: Path) -> None:
 
 @router.get("/backup.db")
 def download_backup(
-    user: User = Depends(get_current_user),
+    # Bewusst ``get_session_user``: ein Gerätetoken des Desktop-Clients darf die
+    # Datei mit allen Passwort-Hashes und LLM-Tokens nicht herausgeben können.
+    user: User = Depends(get_session_user),
     db: Session = Depends(get_db),
 ):
     """Komplette Datenbank als SQLite-Datei zum Herunterladen."""

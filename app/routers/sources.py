@@ -70,13 +70,22 @@ def _owned_source(db: Session, user: User, source_id: int) -> Source:
 
 
 def _last_scans(db: Session, source_ids: list[int]) -> dict[int, Scan]:
-    """Letzter abgeschlossener Scan je Quelle (für die Diff-Zeile im Dashboard)."""
+    """Letzter abgeschlossener Voll-Scan je Quelle (Diff-Zeile im Dashboard).
+
+    Live-Deltas des Desktop-Clients bleiben außen vor: sie beschreiben nur die
+    letzte gespeicherte Datei, nicht den Zustand der Quelle – „+1 neu“ nach jedem
+    Speichern wäre als Zusammenfassung irreführend.
+    """
     if not source_ids:
         return {}
     result: dict[int, Scan] = {}
     for scan in db.scalars(
         select(Scan)
-        .where(Scan.source_id.in_(source_ids), Scan.status == "done")
+        .where(
+            Scan.source_id.in_(source_ids),
+            Scan.status == "done",
+            Scan.kind == "full",
+        )
         .order_by(Scan.started_at, Scan.id)
     ).all():
         result[scan.source_id] = scan  # späterer Lauf überschreibt früheren
@@ -135,7 +144,28 @@ def delete_source(
     db.commit()
 
 
-def _get_or_create_scan(db: Session, source: Source, user: User, scan_uuid: str) -> Scan:
+# Wie viele Live-Läufe je Quelle aufgehoben werden. Die Überwachung des
+# Desktop-Clients erzeugt pro Änderungs-Schub einen Lauf; ohne Deckel wüchse die
+# Tabelle unbegrenzt. Die letzten paar hundert genügen für „was hat der Client
+# zuletzt gemacht?“, alles darüber ist Ballast.
+LIVE_SCAN_KEEP = 200
+
+
+def _prune_live_scans(db: Session, source: Source) -> None:
+    """Alte Live-Läufe einer Quelle wegräumen (samt ihrer entry_changes)."""
+    stale = db.scalars(
+        select(Scan.id)
+        .where(Scan.source_id == source.id, Scan.kind == "live")
+        .order_by(Scan.started_at.desc(), Scan.id.desc())
+        .offset(LIVE_SCAN_KEEP)
+    ).all()
+    if stale:
+        db.execute(delete(Scan).where(Scan.id.in_(stale)))
+
+
+def _get_or_create_scan(
+    db: Session, source: Source, user: User, scan_uuid: str, kind: str = "full"
+) -> Scan:
     """Scan-Lauf zur Client-Kennung laden oder anlegen (ersetzt das alte
     In-Memory-Register – funktioniert damit auch über mehrere Worker)."""
     scan = db.scalar(select(Scan).where(Scan.scan_uuid == scan_uuid))
@@ -144,7 +174,12 @@ def _get_or_create_scan(db: Session, source: Source, user: User, scan_uuid: str)
             source_id=source.id,
             scan_uuid=scan_uuid,
             started_by_user_id=user.id,
-            initial=source.last_scanned_at is None,
+            kind=kind,
+            # Der Erst-Import einer Quelle schreibt bewusst keine Change-Zeilen
+            # (sonst eine pro Datei). Ein Live-Delta ist nie ein Erst-Import,
+            # auch wenn die Quelle noch nie voll gescannt wurde – sonst gingen
+            # genau die paar Änderungen verloren, die es melden soll.
+            initial=kind == "full" and source.last_scanned_at is None,
         )
         db.add(scan)
         db.flush()
@@ -255,9 +290,16 @@ def ingest(
     (außer beim Erst-Scan einer Quelle). Bei ``finalize=True`` läuft die
     Umzug-Erkennung und alles nicht mehr Gesehene wird ``missing`` markiert
     (Annotationen bleiben).
+
+    Der Desktop-Client nutzt denselben Endpunkt für zwei Betriebsarten:
+    ``kind="full"`` ist der klassische Voll-Scan, ``kind="live"`` ein kleines
+    Delta aus der Ordner-Überwachung. Ein Live-Delta zählt nur die Pfade auf,
+    die es betrifft – Verschwundenes meldet es deshalb ausdrücklich über
+    ``removed`` statt über die „alles nicht Gesehene“-Regel des Finalize.
     """
     source = _owned_source(db, user, source_id)
-    scan = _get_or_create_scan(db, source, user, batch.scan_id)
+    kind = "live" if batch.kind == "live" else "full"
+    scan = _get_or_create_scan(db, source, user, batch.scan_id, kind)
     now = utcnow()
 
     paths = [e.path for e in batch.entries]
@@ -357,10 +399,28 @@ def ingest(
             skipped_now += 1
         scan.skipped += skipped_now
 
+    # Vom Client gemeldete Löschungen. Wie überall gilt: Einträge werden nie
+    # gelöscht, nur als „verschwunden“ markiert – die Annotationen daran sollen
+    # ein versehentliches Löschen überleben.
+    removed_now = 0
+    if batch.removed:
+        gone = db.scalars(
+            select(Entry).where(
+                Entry.source_id == source.id,
+                Entry.path.in_(batch.removed),
+                Entry.status == "present",
+            )
+        ).all()
+        for en in gone:
+            en.status = "missing"
+            db.add(EntryChange(scan_id=scan.id, entry_id=en.id, change="missing"))
+            removed_now += 1
+        scan.missing += removed_now
+
     marked_missing = moved = 0
     missing_check_skipped = False
     if batch.finalize:
-        if batch.mark_missing:
+        if batch.mark_missing and kind == "full":
             # Normalfall: nicht mehr gesehene Einträge als „verschwunden“
             # markieren (nach Umzug-Erkennung).
             db.flush()
@@ -382,19 +442,28 @@ def ingest(
                     )
                     marked_missing += 1
                 scan.missing += marked_missing
-        else:
+        elif kind == "full":
             # Unvollständiger Scan (Einträge waren nicht erreichbar): die
             # „verschwunden“-Erkennung wird ausgesetzt, damit nur kurz
             # unerreichbare Ordner nicht fälschlich als gelöscht gelten.
             missing_check_skipped = True
         scan.finished_at = now
         scan.status = "done"
-        source.last_scanned_at = now
+        if kind == "full":
+            # ``last_scanned_at`` heißt „zuletzt vollständig erfasst“ und trägt
+            # zwei Dinge: die Dashboard-Zeile und die Erst-Scan-Erkennung. Ein
+            # Live-Delta darf es deshalb nicht setzen – sonst gälte der erste
+            # echte Voll-Scan nicht mehr als Erst-Import und schriebe eine
+            # Change-Zeile je Datei.
+            source.last_scanned_at = now
+        else:
+            _prune_live_scans(db, source)
 
     db.commit()
     return IngestResult(
         upserted=len(batch.entries),
         marked_missing=marked_missing,
+        removed=removed_now,
         added=added,
         changed=changed,
         moved=moved,
@@ -662,14 +731,24 @@ def mark_source_seen(
 def list_scans(
     source_id: int,
     limit: int = Query(default=20, le=100),
+    include_live: bool = Query(
+        default=False, description="Live-Deltas des Desktop-Clients mit auflisten"
+    ),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Letzte Scan-Läufe einer Quelle (neueste zuerst), mit Diff-Zählern."""
+    """Letzte Scan-Läufe einer Quelle (neueste zuerst), mit Diff-Zählern.
+
+    Standardmäßig nur Voll-Scans – die Live-Deltas des Desktop-Clients würden
+    die Historie sonst überschwemmen; ``include_live=true`` blendet sie ein.
+    """
     source = _accessible_source(db, user, source_id)
+    conds = [Scan.source_id == source.id]
+    if not include_live:
+        conds.append(Scan.kind == "full")
     scans = db.scalars(
         select(Scan)
-        .where(Scan.source_id == source.id)
+        .where(*conds)
         .order_by(Scan.started_at.desc(), Scan.id.desc())
         .limit(limit)
     ).all()

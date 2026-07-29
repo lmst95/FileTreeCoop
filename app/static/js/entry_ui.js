@@ -134,10 +134,70 @@ function actionsHtml(extra = "", { inTree = false } = {}) {
       <button class="act" data-act="label" title="Label hinzufügen">🏷</button>
       <button class="act" data-act="handover" title="Übergeben">➦</button>
       <button class="act act-copy" data-copy-path title="Pfad kopieren">📋</button>
+      <button class="act act-open" data-open-local title="Ordner auf dem Rechner öffnen" hidden>📂</button>
       ${openTree}
       ${extra}
       <button class="act act-more" data-toggle-detail title="Details ein-/ausblenden">⋯</button>
     </span>`;
+}
+
+// --- „Ordner öffnen“ über den Desktop-Client --------------------------------
+//
+// Der Browser darf keinen Dateimanager starten (Sandbox), der Desktop-Client
+// schon. Der 📂-Knopf erscheint deshalb nur an Quellen, für die gerade ein
+// Client bereitsteht – ein Knopf, der in vier von fünf Fällen nur eine
+// Fehlermeldung produziert, wäre schlimmer als keiner.
+
+let _reachable = null; // Set der Quellen-IDs mit erreichbarem Client
+let _reachablePromise = null;
+
+function loadReachableSources() {
+  if (!_reachablePromise) {
+    _reachablePromise = api("/api/clients/reachable-sources")
+      .catch(() => []) // ohne Geräte-Info bleiben die Knöpfe eben aus
+      .then((ids) => {
+        _reachable = new Set(ids);
+        refreshOpenButtons();
+      });
+  }
+  return _reachablePromise;
+}
+
+// Zeilen entstehen laufend nach (Baum klappt auf, Suche rendert neu), deshalb
+// wird das hier aus einem MutationObserver heraus aufgerufen statt an jeder
+// Render-Stelle einzeln – ein vergessener Aufruf fiele sonst als „Knopf fehlt“
+// erst beim Benutzen auf.
+function refreshOpenButtons(root = document) {
+  if (_reachable === null) {
+    loadReachableSources();
+    return;
+  }
+  root.querySelectorAll("[data-open-local]").forEach((btn) => {
+    const node = btn.closest("[data-entry]");
+    btn.hidden = !node || !_reachable.has(Number(node.dataset.source));
+  });
+}
+
+async function openLocally(node) {
+  // Der Baum markiert Ordner mit data-dir; in der Suche steht es genauso.
+  const isDir = node.dataset.dir === "1";
+  try {
+    const res = await api("/api/clients/open", {
+      method: "POST",
+      body: {
+        source_id: Number(node.dataset.source),
+        path: node.dataset.path || "",
+        is_dir: isDir,
+      },
+    });
+    toast(`Wird auf „${res.client_name}“ geöffnet …`, "success");
+  } catch (err) {
+    toast("Ordner konnte nicht geöffnet werden: " + err.message, "error");
+    // Der Client ist womöglich gerade offline gegangen – Zustand auffrischen.
+    _reachable = null;
+    _reachablePromise = null;
+    refreshOpenButtons();
+  }
 }
 
 // --- Annotationsliste (im Detailbereich) ------------------------------------
@@ -294,6 +354,13 @@ async function refreshEntry(node) {
 // --- Interaktionen (Event-Delegation, greift auch für neue Knoten) ----------
 
 function wireEntryActions(rootEl) {
+  // 📂-Knöpfe an neu gerenderten Zeilen ein-/ausblenden (siehe oben).
+  refreshOpenButtons(rootEl);
+  new MutationObserver(() => refreshOpenButtons(rootEl)).observe(rootEl, {
+    childList: true,
+    subtree: true,
+  });
+
   rootEl.addEventListener("click", async (e) => {
     const t = e.target;
 
@@ -307,6 +374,10 @@ function wireEntryActions(rootEl) {
       const node = t.closest("[data-entry]");
       location.href = `/browse?source=${node.dataset.source}` +
         `&path=${encodeURIComponent(node.dataset.path || "")}`;
+      return;
+    }
+    if (t.closest("[data-open-local]")) {
+      await openLocally(t.closest("[data-entry]"));
       return;
     }
     if (t.closest("[data-copy-path]")) {
@@ -409,4 +480,5 @@ window.EntryUI = {
   iconFor, annChipsHtml, actionsHtml, annListHtml, detailHtml,
   wireEntryActions, invalidateMembers, TYPE_LABEL,
   shareRowsHtml, PERM_LABEL,
+  refreshOpenButtons,
 };

@@ -10,6 +10,8 @@ const KIND_LABELS = {
 };
 let me = null; // aktueller Nutzer (für Besitz-Erkennung)
 let lastSources = []; // zuletzt geladene Quellenliste (für Status-Meldungen)
+// Quellen, die gerade ein Desktop-Client betreut (Karte zeigt „🖥 …“ und 📂).
+let clientFolders = new Map(); // source_id -> { client_name, online, local_path }
 
 if (!Scanner.supported()) {
   document.getElementById("browser-warn").hidden = false;
@@ -54,8 +56,50 @@ function scanDiffText(sc) {
   return (parts.length ? parts.join(" · ") : "keine Änderungen") + skip;
 }
 
+// Welcher Client betreut welche Quelle? Nice-to-have – ohne Geräte bleibt die
+// Karte einfach so, wie sie vorher war.
+async function loadClientFolders() {
+  clientFolders = new Map();
+  try {
+    for (const c of await api("/api/clients")) {
+      for (const f of c.folders) {
+        if (!f.enabled) continue;
+        // Ein Online-Client sticht einen offline gemeldeten aus.
+        const known = clientFolders.get(f.source_id);
+        if (known && known.online && !c.online) continue;
+        clientFolders.set(f.source_id, {
+          client_name: c.name,
+          online: c.online && !c.paused,
+          local_path: f.local_path,
+          hash_enabled: f.hash_enabled,
+        });
+      }
+    }
+  } catch (_e) {
+    /* keine Geräte-Info – Karten kommen auch ohne aus */
+  }
+}
+
+// Zeile „🖥 Laptop Max · C:\Projekte“ samt Knopf zum Öffnen im Explorer.
+function clientLineHtml(sourceId) {
+  const info = clientFolders.get(sourceId);
+  if (!info) return "";
+  const dot = info.online ? "🟢" : "⚪";
+  const hash = info.hash_enabled ? " · 🔐 Hashes" : "";
+  const openBtn = info.online
+    ? `<button class="link-btn tiny" data-open-local="${sourceId}"
+               title="Ordner auf ${escapeHtml(info.client_name)} im Explorer öffnen">📂 Ordner öffnen</button>`
+    : "";
+  return `<div class="muted small client-line">
+      ${dot} <a href="/clients">${escapeHtml(info.client_name)}</a>
+      <span class="mono">${escapeHtml(info.local_path)}</span>${escapeHtml(hash)}
+      ${info.online ? "" : "· offline"}
+      ${openBtn}
+    </div>`;
+}
+
 async function loadSources() {
-  const sources = await api("/api/sources");
+  const [sources] = await Promise.all([api("/api/sources"), loadClientFolders()]);
   lastSources = sources;
   if (!sources.length) {
     listEl.innerHTML = `<p class="muted">Noch keine Quellen. Lege deine erste an und scanne einen Ordner.</p>`;
@@ -98,6 +142,7 @@ async function loadSources() {
            title="Quelle samt Annotationen als JSON sichern">⬇ Export</a>
       </div>
       <div class="muted small hash-line" data-hash-line="${s.id}"></div>
+      ${clientLineHtml(s.id)}
       ${rootPathFormHtml(s.id)}
       <div class="scans-panel" data-scans-panel="${s.id}" hidden></div>
       ${isOwner ? `<div class="share-panel" data-share-panel="${s.id}" hidden></div>` : ""}`;
@@ -425,6 +470,21 @@ listEl.addEventListener("click", async (e) => {
   const skipsBtn = e.target.closest("[data-skips]");
   if (skipsBtn) {
     await showSkipLog(Number(skipsBtn.dataset.src), Number(skipsBtn.dataset.skips));
+    return;
+  }
+  const openBtn = e.target.closest("[data-open-local]");
+  if (openBtn) {
+    const sid = Number(openBtn.dataset.openLocal);
+    try {
+      // Pfad "" = die Wurzel der Quelle.
+      const res = await api("/api/clients/open", {
+        method: "POST",
+        body: { source_id: sid, path: "", is_dir: true },
+      });
+      setStatus(`Ordner wird auf „${res.client_name}“ geöffnet …`, "success");
+    } catch (err) {
+      setStatus("Ordner konnte nicht geöffnet werden: " + err.message, "error");
+    }
     return;
   }
   const { scan, rescan, del, share, scans, cleanup, hash } = e.target.dataset;

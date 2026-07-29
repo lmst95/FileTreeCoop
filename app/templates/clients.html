@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Geräte · filetree_coop{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="row-between">
+    <h1>Geräte</h1>
+    <button id="setup-btn" class="primary">+ Gerät einrichten</button>
+  </div>
+  <p class="muted">
+    Der Desktop-Client läuft im Hintergrund, überwacht die eingestellten Ordner
+    und hält den Index aktuell – ohne offenen Browser-Tab. Über ihn lässt sich
+    aus Baum und Suche heraus auch der <strong>Ordner im Explorer öffnen</strong>.
+  </p>
+
+  <section id="setup-panel" class="card" hidden>
+    <h2>Client einrichten</h2>
+    <ol class="setup-steps">
+      <li>
+        Client-Ordner aus diesem Projekt auf den Zielrechner kopieren
+        (Verzeichnis <code>client/</code>) und die Abhängigkeiten installieren:
+        <pre><code>pip install -r client/requirements.txt</code></pre>
+      </li>
+      <li>
+        Client starten – beim ersten Start öffnet sich das Einstellungsfenster:
+        <pre><code>python -m ftc_client</code></pre>
+      </li>
+      <li>
+        Dort <strong>Serveradresse</strong> (<code id="setup-url"></code>) und die
+        eigenen Anmeldedaten eintragen, auf <em>Verbinden</em> klicken. Der Client
+        tauscht sie einmalig gegen einen Gerätetoken – das Passwort wird nicht
+        gespeichert.
+      </li>
+      <li>
+        Im Reiter <strong>Ordner</strong> je Quelle den lokalen Ordner wählen und
+        einzeln entscheiden, ob synchronisiert und ob gehasht werden soll.
+      </li>
+      <li>
+        <strong>Autostart</strong> im Reiter <em>Allgemein</em> aktivieren – dann
+        startet der Client künftig nach der Anmeldung automatisch mit.
+      </li>
+    </ol>
+    <p class="muted small">
+      Ein Gerät lässt sich hier jederzeit entfernen; sein Token gilt sofort nicht
+      mehr, ohne dass du dein Passwort ändern musst.
+    </p>
+    <button type="button" id="setup-close" class="link-btn">schließen</button>
+  </section>
+
+  <div id="clients-list" class="clients"><p class="muted">Lädt …</p></div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/clients.js"></script>{% endblock %}

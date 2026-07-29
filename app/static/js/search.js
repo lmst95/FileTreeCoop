@@ -10,7 +10,8 @@ const kindSel = document.getElementById("search-kind");
 function hitHtml(h) {
   const statusBadge = h.status === "missing"
     ? `<span class="badge missing">verschwunden</span>` : "";
-  return `<div class="card hit entry" data-entry="${h.entry_id}" data-source="${h.source_id}" data-path="${escapeHtml(h.path)}">
+  return `<div class="card hit entry" data-entry="${h.entry_id}" data-source="${h.source_id}"
+       data-path="${escapeHtml(h.path)}" data-dir="${h.is_dir ? 1 : 0}">
     <div class="entry-row">
       <span class="entry-name">${EntryUI.iconFor(h)} ${escapeHtml(h.name)}</span>
       ${statusBadge}

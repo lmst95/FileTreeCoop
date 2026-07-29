@@ -1,0 +1,7 @@
+# Abhängigkeiten des Desktop-Clients (getrennt vom Server!).
+# tkinter kommt mit der Python-Standardinstallation; unter Linux ggf.
+# python3-tk aus der Paketverwaltung nachinstallieren.
+requests==2.32.3
+watchdog==6.0.0
+pystray==0.19.5
+pillow==11.1.0
