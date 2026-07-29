@@ -11,6 +11,12 @@ wählst du einen Ordner, JavaScript läuft rekursiv durch den Baum und überträ
 nur Metadaten (Pfad, Name, Größe, Änderungsdatum) an den Server — kein
 Dateiinhalt, keine Agent-Installation.
 
+Wer es *dauerhaft* aktuell mag, installiert zusätzlich den optionalen
+[**Desktop-Client**](client/README.md): ein Hintergrundprogramm im Infobereich
+der Taskleiste, das die eingestellten Ordner überwacht, Änderungen von selbst
+meldet — und als Einziges kann, was ein Browser prinzipbedingt nicht darf:
+**den Ordner im Explorer öffnen**.
+
 ![Volltextsuche über Namen, Pfade, Notizen und Labels](docs/media/02-suche.gif)
 
 > Alle Aufnahmen in dieser README zeigen die Anwendung mit einem generierten
@@ -33,6 +39,10 @@ Chromium-Browsern), registrieren, eine Quelle anlegen und einen Ordner scannen.
 ```bash
 pytest -q
 ```
+
+Der [Desktop-Client](client/README.md) bringt seine eigenen mit
+(`cd client && pytest`) – er ist ein eigenes Programm mit eigenen
+Abhängigkeiten.
 
 ## Wie es funktioniert
 
@@ -155,9 +165,56 @@ Netzlaufwerk bei jedem woanders hängt. Ohne Basispfad wird der relative Pfad
 kopiert. Windows-Wurzeln (`C:\…`, `\\server\share`) werden erkannt und mit
 Backslashes zusammengesetzt.
 
-Wer wirklich **einen Klick → Ordner geht auf** will, braucht ein optionales
-lokales Helfer-Programm (siehe Roadmap: Python-CLI/Agent), das
-`explorer`/`open`/`xdg-open` aufruft.
+Wer wirklich **einen Klick → Ordner geht auf** will, installiert den
+[Desktop-Client](#desktop-client-) — dann erscheint an jeder Zeile zusätzlich
+ein 📂.
+
+## Desktop-Client (🖥)
+
+Optionales Hintergrundprogramm für den eigenen Rechner
+(`client/`, [eigene README](client/README.md)). Es erscheint als Symbol im
+Infobereich der Taskleiste; darüber öffnen sich die Einstellungen. Es kann:
+
+- **Ordner überwachen** — konfigurierte Ordner live (`watchdog`) plus
+  turnusmäßiger Voll-Scan. Was passiert ist, während der Rechner aus war, holt
+  der Voll-Scan nach.
+- **Inhalts-Hashes rechnen** — derselbe Nachlauf wie im Browser, nur im
+  Hintergrund und ohne die 256-MB-Grenze (hier wird strömend gehasht).
+- **Ordner öffnen** — der 📂-Knopf in Baum und Suche.
+- **Autostart** — startet still nach der Benutzeranmeldung mit.
+
+**Pro Quelle einzeln schaltbar:** Sync an/aus, Live-Überwachung an/aus,
+Inhalts-Hashes an/aus, Voll-Scan-Intervall. Das ist Absicht: den Index aktuell
+zu halten kostet fast nichts, Hashen liest jede Datei einmal komplett.
+
+**Karenzzeit statt Hektik:** Eine erkannte Änderung wird erst gemeldet, wenn der
+Pfad einige Sekunden Ruhe gegeben hat (einstellbar, Standard 10 s; jeder Pfad
+mit eigenem Zähler). Sonst landeten halb geschriebene Dateien und die
+Temporärdateien von Office & Co. im Index — angelegt und im nächsten Atemzug
+wieder als „verschwunden“ markiert. Ein Umbenennen ergibt so außerdem ein
+sauberes Bild, weil beide Ereignisse (alter Pfad weg, neuer da) zusammen
+ausgewertet werden.
+
+**Anmeldung ohne gespeichertes Passwort:** Der Client tauscht die Konto-Daten
+einmalig gegen einen **Gerätetoken**. Auf der Platte liegt nur dieser Token; er
+kann den Index füttern, aber bewusst *nicht* das Konto übernehmen (kein
+Voll-Backup, keine Passwortänderung, keine Geräteverwaltung). Widerrufen wird er
+mit einem Klick unter **Geräte** — ohne das Konto-Passwort zu ändern.
+
+**Live-Deltas verstopfen nichts:** Die kleinen Meldungen aus der Überwachung
+sind als eigene Scan-Art (`live`) markiert. Dashboard-Diff und Aktivitäts-Feed
+zeigen weiterhin nur echte Voll-Scans; in der Scan-Historie lassen sie sich per
+`?include_live=true` einblenden. Alte Live-Läufe werden automatisch beschnitten.
+
+## Geräte (`/clients`)
+
+Zeigt, **welcher Rechner welche Quelle betreut**: Name, Betriebssystem,
+Version, ein Punkt für den Verbindungszustand (grün verbunden · grau offline ·
+gelb pausiert), zuletzt gesehen, und je Ordner den lokalen Pfad samt seinen
+Schaltern und letztem Fehler. Von hier aus lässt sich ein Gerät umbenennen,
+**aus der Ferne pausieren** oder entfernen (= Token sofort ungültig, Index
+bleibt). Die Quellen-Karten im Dashboard zeigen dieselbe Information kompakt in
+einer Zeile — samt „📂 Ordner öffnen“.
 
 ## Was beim erneuten Scannen passiert
 
@@ -266,17 +323,19 @@ lässt sich ohne Modell weiterverfeinern.
 | Datenbank    | SQLite über SQLAlchemy 2.0 |
 | Migrationen  | **Alembic** (`migrations/`); `init_db()` migriert beim Start automatisch |
 | Suche        | SQLite **FTS5**, per Trigger synchron gehaltener Index `entries_fts` |
-| Auth         | E-Mail/Passwort (bcrypt), signiertes Session-Cookie |
+| Auth         | E-Mail/Passwort (bcrypt), signiertes Session-Cookie; Geräte per Bearer-Token |
 | Frontend     | Jinja2-Templates + Vanilla JS (kein Build-Step) |
 | Scanner      | Browser, File System Access API (`showDirectoryPicker`) |
+| Desktop-Client | Python + `watchdog`, `pystray` (Taskleiste), `tkinter` (Einstellungen) |
 
 ```
 app/
   main.py            FastAPI-App, Seiten, Startup (init_db)
   db.py              Engine, Session, Alembic-Anbindung, FTS5-Index + Sync-Trigger
   models.py          users, sources, source_shares, entries, annotations,
-                     scans, entry_changes, source_visits, invites
-  auth.py            Passwort-Hashing, Session, current_user
+                     scans, entry_changes, source_visits, invites,
+                     clients, client_folders, client_commands
+  auth.py            Passwort-Hashing, Session, Gerätetokens, current_user
   access.py          zugängliche Quellen eines Nutzers (geteilt)
   search.py          FTS5-Query-Builder (Präfix, bm25) + strukturelle Filter
   search_assist.py   Prompt-Bau und Validierung des Suchassistenten
@@ -284,15 +343,22 @@ app/
   routers/           auth, sources (+ingest/scans/shares/invites/members/seen/
                      missing/hashes), entries, search (+assist), annotations,
                      activity (+notifications), export, storage, llm,
-                     backup (Voll-Dump der DB, nur Betreiber)
+                     backup (Voll-Dump der DB, nur Betreiber),
+                     clients (Registrierung/Heartbeat/Befehle der Desktop-Clients)
   templates/         login, dashboard, browse, search, overview, handovers,
-                     calendar, activity, storage, notes, llm, profile
+                     calendar, activity, storage, notes, llm, profile, clients
   static/js/         app, entry_ui, palette, auth, scanner, dashboard, tree, search,
-                     overview, handovers, calendar, activity, storage, notes, llm
-migrations/          Alembic (0001 Baseline … 0008 Inhalts-Hash)
+                     overview, handovers, calendar, activity, storage, notes, llm,
+                     clients
+client/              Desktop-Client (eigenes Programm, eigene requirements.txt)
+  ftc_client/        config, api, scanner, hasher, watcher, agent, tray,
+                     settings_ui, autostart, opener, icon
+  run_client.pyw     Startskript (Autostart, Doppelklick) – ohne Konsolenfenster
+  tests/             eigener Testlauf: cd client && pytest
+migrations/          Alembic (0001 Baseline … 0009 Desktop-Clients)
 tests/               ingest, scans, search, search_assist, annotations, threads,
                      handover_flow, activity, invites, cleanup, export, hashes,
-                     storage, backup, … (pytest + TestClient)
+                     storage, backup, clients, … (pytest + TestClient)
 ```
 
 ## Datenmodell (Kurzform)
@@ -312,7 +378,14 @@ tests/               ingest, scans, search, search_assist, annotations, threads,
   ist der Übergabe-Workflow; `parent_annotation_id` macht Antworten möglich.
 - **scans** — ein Scan-Lauf je Quelle mit Diff-Zählern (neu/geändert/
   verschwunden/verschoben/wieder da) und Startzeit (ersetzt das frühere
-  In-Memory-Register, funktioniert auch mit mehreren Workern).
+  In-Memory-Register, funktioniert auch mit mehreren Workern). `kind` trennt
+  Voll-Scans von den Live-Deltas des Desktop-Clients.
+- **clients** — registrierte Desktop-Clients (Gerät + gehashter Token +
+  `last_seen_at`, woraus sich „online“ ableitet).
+- **client_folders** — welcher Client welche Quelle mit welchem lokalen Pfad
+  betreut, samt seiner Schalter (Sync/Hashes/Live/Intervall).
+- **client_commands** — Auftrags-Queue an einen Client (z. B. `open_folder`),
+  die er beim Heartbeat abholt.
 - **entry_changes** — Einzeländerungen je Scan (inkl. `old_path` bei Umzügen)
   = Änderungs-Historie jeder Datei.
 - **source_visits** — letzter Besuch (Nutzer, Quelle) für die Ungelesen-Punkte.
@@ -391,7 +464,11 @@ registriert und `/api/llm/run` mit passendem `target_kind` aufruft — ohne
 
 - Nur der **Ordner-Scan** und das **Hashen** brauchen einen Chromium-Browser
   (Chrome/Edge); alles andere (Suchen, Baum, Annotieren, Übergaben, Kalender,
-  Speicher) läuft überall.
+  Speicher) läuft überall. Mit dem [Desktop-Client](client/README.md) entfällt
+  auch diese Einschränkung – er scannt und hasht ganz ohne Browser.
+- Der **Desktop-Client** ist auf Windows und Linux erprobt; unter macOS
+  verlangt `pystray` den Haupt-Thread, den dort `tkinter` belegt – das Menü im
+  Infobereich kann sich deshalb eigenwillig verhalten.
 - Termine sind reine **Tagesdaten** (keine Uhrzeiten, keine Wiederholungen);
   Erinnerungen übernimmt der Kalender des Vertrauens via **iCal-Export**.
 - Die Umzug-Erkennung arbeitet mit (Name, Größe, mtime) und lässt mehrdeutige
@@ -403,6 +480,5 @@ registriert und `/api/llm/run` mit passendem `target_kind` aufruft — ohne
   Treffer (die Suche läuft normal), kann eine Frage aber falsch übersetzen –
   deshalb zeigt er die erkannten Filter immer offen an.
 - **Später:** wiederkehrende Todos, semantische Suche (Embeddings), Duplikate
-  direkt aus der Ansicht bereinigen, optionale Inhalts-Indexierung, optionales
-  Python-CLI für headless-Scans und -Hashes, E-Mail-Digest der Aktivität,
-  Umstieg auf Postgres bei größerem Mehrbenutzerbetrieb.
+  direkt aus der Ansicht bereinigen, optionale Inhalts-Indexierung, E-Mail-Digest
+  der Aktivität, Umstieg auf Postgres bei größerem Mehrbenutzerbetrieb.

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.auth import (
     authenticate,
     get_current_user,
+    get_session_user,
     hash_password,
     make_session_token,
     verify_password,
@@ -111,7 +112,9 @@ def me(user: User = Depends(get_current_user)):
 @router.patch("/me", response_model=UserOut)
 def update_me(
     data: ProfileUpdateIn,
-    user: User = Depends(get_current_user),
+    # Kontodaten ändern ist Sache des angemeldeten Menschen, nicht eines
+    # Gerätetokens (siehe get_session_user).
+    user: User = Depends(get_session_user),
     db: Session = Depends(get_db),
 ):
     username = data.username.lower()
@@ -138,7 +141,7 @@ def update_me(
 @router.post("/me/password", status_code=status.HTTP_204_NO_CONTENT)
 def change_password(
     data: PasswordChangeIn,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_session_user),
     db: Session = Depends(get_db),
 ):
     if not verify_password(data.current_password, user.password_hash):

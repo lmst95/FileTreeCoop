@@ -5,8 +5,8 @@ oder nur eine, und blendet entweder einen Pfad samt Unterbaum (``kind='path'``)
 oder passende Dateinamen (``kind='name'``) aus. ``active`` schaltet sie ab, ohne
 sie zu verlieren.
 
-Revision ID: 0009
-Revises: 0008
+Revision ID: 0010
+Revises: 0009
 Create Date: 2026-07-28
 """
 from __future__ import annotations
@@ -14,8 +14,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0009"
-down_revision = "0008"
+revision = "0010"
+down_revision = "0009"
 branch_labels = None
 depends_on = None
 

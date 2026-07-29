@@ -59,6 +59,8 @@ class ScanOut(BaseModel):
     finished_at: datetime | None = None
     status: str
     initial: bool
+    # "full" = Voll-Scan (Browser oder Client), "live" = Delta der Überwachung.
+    kind: str = "full"
     added: int
     changed: int
     unchanged: int
@@ -169,11 +171,24 @@ class IngestBatchIn(BaseModel):
     # Bei unvollständigen Scans (Skips) setzt der Client dies auf False, damit
     # nur kurz unerreichbare Ordner nicht fälschlich als gelöscht gelten.
     mark_missing: bool = True
+    # "full" = vollständiger Lauf über den Baum; "live" = kleines Delta aus der
+    # Ordner-Überwachung des Desktop-Clients. Live-Läufe erscheinen nicht in der
+    # Dashboard-Diff-Zeile und nicht im Aktivitäts-Feed – sie fallen im
+    # Minutentakt an und würden beides zumüllen.
+    kind: str = "full"
+    # Pfade, von denen der Client *weiß*, dass sie weg sind (Lösch-Ereignis der
+    # Überwachung). Nur so kann ein Live-Delta Verschwundenes melden, ohne den
+    # ganzen Baum zu laufen: ``finalize`` + ``mark_missing`` können das nicht
+    # leisten, weil ein Delta nun einmal nicht alle vorhandenen Pfade enthält.
+    removed: list[str] = []
 
 
 class IngestResult(BaseModel):
     upserted: int
     marked_missing: int = 0
+    # Wie viele der in ``removed`` gemeldeten Pfade tatsächlich als
+    # „verschwunden“ markiert wurden.
+    removed: int = 0
     # Diff dieses Aufrufs (kumulativ steht er am Scan selbst).
     added: int = 0
     changed: int = 0
@@ -217,6 +232,111 @@ class HashSummaryOut(BaseModel):
     skipped: int = 0  # bewusst übersprungen (zu groß)
     errors: int = 0  # nicht lesbar
     duplicate_groups: int = 0  # Gruppen gleicher Inhalte in dieser Quelle
+
+
+# --- Desktop-Client ---------------------------------------------------------
+
+class ClientFolderIn(BaseModel):
+    """Ein vom Client überwachter Ordner, so wie er ihn selbst konfiguriert hat."""
+    source_id: int
+    local_path: str = ""
+    enabled: bool = True
+    hash_enabled: bool = False
+    watch_enabled: bool = True
+    scan_interval_minutes: int = Field(default=60, ge=1, le=10080)
+    last_scan_at: datetime | None = None
+    last_error: str = Field(default="", max_length=300)
+
+
+class ClientFolderOut(ClientFolderIn):
+    source_label: str = ""
+    source_kind: str = ""
+
+
+class ClientRegisterIn(BaseModel):
+    """Erstanmeldung eines Clients: einmal Konto-Daten gegen einen Gerätetoken."""
+    identifier: str = Field(min_length=1)  # E-Mail oder Username
+    password: str = Field(min_length=1)
+    name: str = Field(default="", max_length=120)
+    hostname: str = Field(default="", max_length=200)
+    platform: str = Field(default="", max_length=40)
+    version: str = Field(default="", max_length=40)
+
+
+class ClientRegisterOut(BaseModel):
+    client_id: int
+    # Der Gerätetoken – wird genau hier einmal ausgegeben und danach nur noch
+    # als Hash gespeichert.
+    token: str
+    name: str
+    user: UserOut
+
+
+class ClientHeartbeatIn(BaseModel):
+    version: str = Field(default="", max_length=40)
+    status_text: str = Field(default="", max_length=300)
+    name: str | None = Field(default=None, max_length=120)
+    hostname: str | None = Field(default=None, max_length=200)
+    # Der Client meldet bei jedem Heartbeat seine komplette Ordner-Konfiguration.
+    # Sie ist damit stets aktuell, ohne dass es einen zweiten Änderungspfad gäbe:
+    # Herr über die Konfiguration ist der Client, der Server zeigt sie nur an.
+    folders: list[ClientFolderIn] | None = None
+
+
+class ClientCommandOut(BaseModel):
+    id: int
+    command: str  # open_folder | rescan | rehash
+    payload: dict = Field(default_factory=dict)
+
+
+class ClientHeartbeatOut(BaseModel):
+    ok: bool = True
+    # Aus der Ferne pausiert? Dann legt der Client seine Sync-Worker still.
+    paused: bool = False
+    server_time: datetime
+    commands: list[ClientCommandOut] = []
+
+
+class ClientCommandAckIn(BaseModel):
+    status: str = "done"  # done | error
+    result: str = Field(default="", max_length=500)
+
+
+class ClientOut(BaseModel):
+    id: int
+    name: str
+    hostname: str
+    platform: str
+    version: str
+    status_text: str = ""
+    paused: bool = False
+    created_at: datetime
+    last_seen_at: datetime | None = None
+    # Aus ``last_seen_at`` abgeleitet, nicht gespeichert (siehe models.Client).
+    online: bool = False
+    folders: list[ClientFolderOut] = []
+
+
+class ClientPatchIn(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    paused: bool | None = None
+
+
+class OpenFolderIn(BaseModel):
+    """„Zeig mir das im Explorer“ – aus Baum, Suche oder Quellen-Karte."""
+    source_id: int
+    # Pfad relativ zur Quell-Wurzel; "" = die Wurzel selbst.
+    path: str = ""
+    # Bei einer Datei den *enthaltenden* Ordner öffnen und die Datei markieren.
+    is_dir: bool = True
+    # Optional gezielt an einen Client; sonst nimmt der Server den passenden.
+    client_id: int | None = None
+
+
+class OpenFolderOut(BaseModel):
+    command_id: int
+    client_id: int
+    client_name: str
 
 
 # --- Annotations ------------------------------------------------------------

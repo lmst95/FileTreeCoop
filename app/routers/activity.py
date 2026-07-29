@@ -75,9 +75,12 @@ def notifications(
                 Annotation.author_user_id != user.id,
             )
         )
+        # Nur Voll-Scans: die Live-Deltas des Desktop-Clients fallen im
+        # Minutentakt an und wären als „neue Aktivität“ nur Lärm.
         scan_q = select(func.count(Scan.id)).where(
             Scan.source_id.in_(accessible_source_ids(db, user)),
             Scan.status == "done",
+            Scan.kind == "full",
             Scan.started_by_user_id != user.id,
         )
         if seen is not None:
@@ -143,6 +146,7 @@ def activity_feed(
         .where(
             Scan.source_id.in_(accessible_source_ids(db, user)),
             Scan.status == "done",
+            Scan.kind == "full",
         )
         .order_by(Scan.finished_at.desc())
         .limit(limit)

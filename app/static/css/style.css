@@ -1470,3 +1470,54 @@ a.bar-row:hover, .bar-row[data-open]:hover { background: var(--hover); }
   .ignore-form select, .ignore-form button { flex: 1 1 auto; }
   .mode-hint { margin: -0.6rem 0 0.9rem; }
 }
+
+/* --- Geräte (Desktop-Clients) ---------------------------------------------- */
+
+.clients { display: flex; flex-direction: column; gap: 0.9rem; }
+
+.client-card { animation: rise 0.4s var(--ease) both; }
+.client-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 0.6rem; flex-wrap: wrap;
+}
+.client-actions { display: flex; gap: 0.7rem; flex-shrink: 0; }
+
+/* Verbindungspunkt: grün = meldet sich, grau = still, gelb = pausiert. */
+.client-dot { font-size: 0.72rem; vertical-align: middle; margin-right: 0.25rem; }
+.client-dot.on { color: var(--success); }
+.client-dot.off { color: var(--muted); opacity: 0.6; }
+.client-dot.paused { color: var(--warn); }
+.client-card.is-online { border-left: 3px solid var(--success); }
+
+.client-folders { list-style: none; padding: 0; margin: 0.7rem 0 0; }
+.client-folder {
+  padding: 0.5rem 0; border-top: 1px solid var(--hairline);
+  display: flex; flex-direction: column; gap: 0.12rem;
+}
+.client-folder.off { opacity: 0.55; }
+.client-folder-head {
+  display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;
+}
+.client-error { color: var(--warn); }
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82em; overflow-wrap: anywhere;
+}
+
+.setup-steps { margin: 0.4rem 0 0.8rem; padding-left: 1.2rem; line-height: 1.7; }
+.setup-steps pre {
+  margin: 0.3rem 0; padding: 0.45rem 0.7rem; border-radius: var(--r-sm);
+  background: var(--hover); overflow-x: auto;
+}
+.setup-steps code { font-size: 0.85em; }
+
+/* Client-Zeile auf der Quellen-Karte („🖥 Laptop Max · C:\Projekte“). */
+.client-line {
+  margin-top: 0.2rem; display: flex; align-items: center;
+  gap: 0.4rem; flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .client-head { flex-direction: column; align-items: flex-start; }
+}

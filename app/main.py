@@ -19,6 +19,7 @@ from app.routers import (
     annotations,
     auth,
     backup,
+    clients,
     entries,
     export,
     ignores,
@@ -53,6 +54,7 @@ app.include_router(export.router)
 app.include_router(llm.router)
 app.include_router(storage.router)
 app.include_router(backup.router)
+app.include_router(clients.router)
 
 
 @app.get("/health")
@@ -145,6 +147,15 @@ def storage_page(request: Request, user: User | None = Depends(get_optional_user
         return RedirectResponse(url="/login", status_code=302)
     return templates.TemplateResponse(
         "storage.html", {"request": request, "user": user}
+    )
+
+
+@app.get("/clients", response_class=HTMLResponse)
+def clients_page(request: Request, user: User | None = Depends(get_optional_user)):
+    if user is None:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse(
+        "clients.html", {"request": request, "user": user}
     )
 
 

@@ -32,7 +32,8 @@ function hitHtml(h) {
   // Direkt aus dem Treffer eine Ignorierregel vorbereiten (Ordner -> Unterbaum,
   // Datei -> Name); abgeschickt wird sie erst im Formular.
   const ignoreBtn = `<button class="act" data-ignore title="dauerhaft ausblenden">🚫</button>`;
-  return `<div class="card hit entry" data-entry="${h.entry_id}" data-source="${h.source_id}" data-path="${escapeHtml(h.path)}" data-name="${escapeHtml(h.name)}" data-dir="${h.is_dir ? "1" : ""}">
+  return `<div class="card hit entry" data-entry="${h.entry_id}" data-source="${h.source_id}"
+       data-path="${escapeHtml(h.path)}" data-name="${escapeHtml(h.name)}" data-dir="${h.is_dir ? 1 : 0}">
     <div class="entry-row">
       <span class="entry-name">${EntryUI.iconFor(h)} ${escapeHtml(h.name)}</span>
       ${statusBadge}

@@ -234,6 +234,11 @@ class Scan(Base):
     # Erst-Scan einer Quelle: es werden keine per-Eintrag-Change-Zeilen
     # geschrieben (sonst eine Zeile pro importierter Datei).
     initial: Mapped[bool] = mapped_column(Boolean, default=False)
+    # "full"  = vollständiger Lauf über den ganzen Baum (Browser oder Client);
+    # "live"  = kleines Delta des Desktop-Clients aus der Ordner-Überwachung.
+    # Live-Läufe sind bewusst als eigene Art markiert: sie fallen im Minutentakt
+    # an und würden sonst Dashboard-Diff und Aktivitäts-Feed zumüllen.
+    kind: Mapped[str] = mapped_column(String(10), default="full")
     added: Mapped[int] = mapped_column(Integer, default=0)
     changed: Mapped[int] = mapped_column(Integer, default=0)
     unchanged: Mapped[int] = mapped_column(Integer, default=0)
@@ -364,6 +369,116 @@ class Invite(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# --- Desktop-Client (Agent) --------------------------------------------------
+#
+# Der Desktop-Client ist ein Hintergrundprogramm auf dem Rechner des Nutzers:
+# er überwacht konfigurierte Ordner, schickt Metadaten-Änderungen an den Server
+# und kann auf Zuruf einen Ordner im Explorer öffnen. Die *maßgebliche*
+# Konfiguration liegt beim Client (er kennt seine lokalen Pfade); der Server
+# hält davon eine gemeldete Kopie, damit die Website zeigen kann, welcher Client
+# wo läuft, und damit ein Befehl an den richtigen Client geht.
+
+
+class Client(Base):
+    """Ein registrierter Desktop-Client (ein Rechner eines Nutzers).
+
+    Authentifiziert sich mit einem Gerätetoken, der nur als Hash gespeichert
+    wird (``token_hash``) – wie ein Passwort, damit ein DB-Leck keine
+    einsatzfähigen Tokens preisgibt. „Online“ ist keine Spalte, sondern wird aus
+    ``last_seen_at`` abgeleitet (siehe ``routers/clients.py``): eine gespeicherte
+    Flagge bliebe hängen, wenn ein Client abstürzt statt sich abzumelden.
+    """
+
+    __tablename__ = "clients"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # Frei wählbarer Anzeigename, z. B. "Laptop Max".
+    name: Mapped[str] = mapped_column(String(120), default="")
+    hostname: Mapped[str] = mapped_column(String(200), default="")
+    platform: Mapped[str] = mapped_column(String(40), default="")  # win32|darwin|linux
+    version: Mapped[str] = mapped_column(String(40), default="")
+    # SHA-256 des Gerätetokens (hex). Der Token selbst wird nur einmal ausgegeben.
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Kurzer Zustandstext des Clients ("2 Ordner überwacht", "pausiert" …).
+    status_text: Mapped[str] = mapped_column(String(300), default="")
+    # Vom Nutzer angehalten? Der Client fragt das beim Heartbeat ab und legt
+    # seine Sync-Worker still – so lässt sich ein Rechner aus der Ferne pausieren.
+    paused: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    folders: Mapped[list["ClientFolder"]] = relationship(
+        back_populates="client", cascade="all, delete-orphan"
+    )
+
+
+class ClientFolder(Base):
+    """Ein vom Client überwachter Ordner, gebunden an eine Quelle.
+
+    Gemeldete Kopie der Client-Konfiguration – die Website zeigt daraus „welcher
+    Rechner deckt welche Quelle mit welchem lokalen Pfad ab“. ``enabled`` und
+    ``hash_enabled`` sind getrennt schaltbar: den Index aktuell halten ist
+    billig, Inhalts-Hashes lesen jede Datei komplett.
+    """
+
+    __tablename__ = "client_folders"
+    __table_args__ = (
+        UniqueConstraint("client_id", "source_id", name="uq_client_folder"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), index=True
+    )
+    source_id: Mapped[int] = mapped_column(
+        ForeignKey("sources.id", ondelete="CASCADE"), index=True
+    )
+    # Absoluter Pfad auf dem Client-Rechner (nur der Besitzer sieht ihn).
+    local_path: Mapped[str] = mapped_column(Text, default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    hash_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Live-Überwachung (watchdog) zusätzlich zum periodischen Voll-Scan.
+    watch_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    scan_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    last_scan_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Letzter Fehler dieses Ordners (z. B. "Pfad nicht gefunden"); "" = alles gut.
+    last_error: Mapped[str] = mapped_column(String(300), default="")
+
+    client: Mapped["Client"] = relationship(back_populates="folders")
+
+
+class ClientCommand(Base):
+    """Ein Auftrag vom Server an einen Client (z. B. „öffne diesen Ordner“).
+
+    Der Client holt offene Aufträge beim Heartbeat ab – bewusst per Polling
+    statt WebSocket: das funktioniert hinter jedem Proxy und NAT, ohne dass der
+    Client von außen erreichbar sein muss. Die Latenz ist das Heartbeat-Intervall
+    (wenige Sekunden), was für „Ordner öffnen“ genügt.
+    """
+
+    __tablename__ = "client_commands"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), index=True
+    )
+    # open_folder | rescan | rehash
+    command: Mapped[str] = mapped_column(String(30))
+    payload_json: Mapped[str] = mapped_column(Text, default="")
+    # pending -> delivered -> done | error (| expired)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    result: Mapped[str] = mapped_column(String(500), default="")
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 # --- LLM-Integration --------------------------------------------------------
